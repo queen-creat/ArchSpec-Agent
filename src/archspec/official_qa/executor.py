@@ -407,7 +407,10 @@ class OfficialQAExecutor:
             retrieval_query = self.parallel_lookup.retrieval_query
             planned["lookup_plan"] = self.parallel_lookup
             self.budget["parallel_queries"] = len(self.parallel_parts)
-        if self.parallel_lookup is None and (self.policy.local_spacing or self.plan.query_focus is not None):
+        from archspec.official_documents.table_lookup import table_lookup_subject
+
+        if self.parallel_lookup is None and (self.policy.local_spacing or self.plan.query_focus is not None
+                or table_lookup_subject(self.plan.search_query) is not None):
             from archspec.official_documents.lookup import prepare_lookup_plan
 
             lookup = prepare_lookup_plan(request.query, region=region, source_ids=source_ids)

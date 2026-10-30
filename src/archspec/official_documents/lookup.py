@@ -467,6 +467,10 @@ def _preferred_reading_indices(prepared, snapshot):
 
     if not _reading_source_matches(prepared, snapshot):
         return set()
+    from archspec.official_documents.table_lookup import table_caption_indices, table_lookup_subject
+
+    if table_lookup_subject(prepared.question_plan.search_query) is not None:
+        return table_caption_indices(prepared.question_plan.search_query, snapshot, prepared.question_plan.conditions)
     rows = snapshot["chunks"]
     runs = clause_runs(rows)
     groups = defaultdict(list)
