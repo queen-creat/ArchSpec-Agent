@@ -110,7 +110,7 @@ class DocumentChunker:
             annex_table = annex_heading and block.page_number in annex_table_pages
             # 表中的两级编号不是新章节，不能清掉已经取得的附录路径。
             numeric = None if annex_table else NUMERIC_HEADING.fullmatch(text)
-            if numeric and self._confirmed_numeric_heading(numeric, expanded_blocks[index + 1:index + 4]):
+            if numeric and self._confirmed_numeric_heading(numeric, expanded_blocks[index + 1:index + 9]):
                 drafts.extend(self._finish(pending))
                 if "." in numeric["number"]:
                     level_two_heading = text
@@ -210,7 +210,7 @@ class DocumentChunker:
         if (len(title) > 60 or any(mark in title for mark in ("。", "；", "，", "…"))
                 or re.match(r"(?:倍|米|平方米|mm\b|cm\b|m\b|%|℃|°)", title, re.IGNORECASE)):
             return False
-        for block in following:
+        for block in following[:3]:
             text = block.text.strip()
             # 紧邻的章节或页脚可跳过，普通正文不能跨过去猜章节。
             clause = CLAUSE_PATTERN.match(text)
@@ -218,7 +218,24 @@ class DocumentChunker:
                 return (not CLAUSE_REFERENCE_BODY.match(clause["body"])
                         and clause["number"].startswith(match["number"] + "."))
             if not NUMERIC_HEADING.fullmatch(text) and not text.isdigit():
+                break
+        # 首条的开头可能漏识别；后面两个独立且递增的实际子条号仍能证明节边界。
+        # 中间无编号文字只归此节，绝不反推它的条号；遇其它章节条号立即停止。
+        prefix = match["number"] + "."
+        children = []
+        for block in following:
+            clause = clause_start(block.text.strip())
+            if clause is None:
+                continue
+            number = clause["number"]
+            if (not number.startswith(prefix) or not number[len(prefix):].isdigit()):
                 return False
+            value = int(number[len(prefix):])
+            if children and value <= children[-1]:
+                return False
+            children.append(value)
+            if len(children) == 2:
+                return True
         return False
 
     @staticmethod
