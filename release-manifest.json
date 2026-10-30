@@ -89,7 +89,7 @@
     "src/archspec/official_documents/cell_pixels.py": "0b2a4e4bdae7811e8c6799e163d7ccf068fbd848889cb4c931ce33ad82319a87",
     "src/archspec/official_documents/cell_reread.py": "1a1215103f042438791dafa96beeeeb397db34b70fca3f4f8fa63bc74cc36249",
     "src/archspec/official_documents/clause_links.py": "71dab3782a3c52236584c4476d0d5baf3925ab838d2e6dddf7a4732e521c7098",
-    "src/archspec/official_documents/clause_units.py": "7c2236c480d0b55cefdb9eaf22e1f1e49686d8db289da56b20f67ae5886cf679",
+    "src/archspec/official_documents/clause_units.py": "832ceb13e505692873a791711e4566115fed7196d82f1c074208f3b3706d5c1e",
     "src/archspec/official_documents/compute_worker.py": "b0f2c2f55aafc5ee7b3e32a88659c704b8cf7571020dc50deacd0ca75591002c",
     "src/archspec/official_documents/download_errors.py": "669501e20ee18c30cd38ecb074facedb72ba271ae33b0d1a646c66435d490892",
     "src/archspec/official_documents/downloader.py": "2ad386f087d43782f5ca8bac608b71be7f47486e7e16807839ec48eea508cfe3",

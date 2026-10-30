@@ -44,10 +44,58 @@ def clause_indices(rows, selected_index):
     return clause_runs(rows).get(selected_index, (selected_index,))
 
 
+def _scanned_list_gaps(record, selected):
+    """整条续文一起核显式列表跳号；只报告风险，不补编号或原字。"""
+    if not selected or not any(page.get("method") in {"OCR", "HYBRID"}
+            and any(row["page_start"] <= page["pdf_page"] <= row["page_end"] for row in selected)
+            for page in record["pages"]):
+        return []
+    text = "\n".join(row["text"] for row in selected)
+    introduction = re.search(r"(?:下列|以下)(?:规定|要求|条件|措施)\s*[：:]", text)
+    if introduction is None:
+        return []
+    previous, style, findings = None, None, []
+    for line in text[introduction.end():].splitlines():
+        stripped = line.strip()
+        anchor = clause_start(stripped)
+        if (anchor and CLAUSE.fullmatch(anchor["number"]) or re.match(
+                r"^(?:注(?:释)?|附注|条文说明)(?:[：:\d\s]|$)|^(?:表|图)\s*\d", stripped)):
+            break
+        marker = re.match(r"^([1-9]\d?)([、.)）．]|[ \t]+)?[ \t]*(?=[\u3400-\u9fff])", stripped)
+        if marker is None:
+            continue
+        number, separator = int(marker[1]), marker[2]
+        current_style = ("plain" if separator is None or separator.isspace()
+                         else "paren" if separator in {"）", ")"} else separator.replace("．", "."))
+        if style is None:
+            if separator is None and number != 1:
+                continue
+            style, previous = current_style, 0
+        if current_style != style:
+            continue  # 内嵌括号编号不混入外层序列。
+        if separator is None and number != previous + 1:
+            continue  # 无分隔数字可能是人数/层数等续行，只用连续项防止假缺号。
+        if number <= previous:
+            break  # 同样格式重起或倒序时不猜列表层级。
+        if number > previous + 1:
+            missing = list(range(previous + 1, number))
+            findings.append({"kind": "OCR_LIST_NUMBER_GAP",
+                "clause_number": selected[0].get("clause_number"),
+                "previous_item_number": previous or None, "next_item_number": number,
+                "missing_item_numbers": missing[:20], "missing_item_count": len(missing),
+                "page_start": min(row["page_start"] for row in selected),
+                "page_end": max(row["page_end"] for row in selected),
+                "message": "扫描条文的编号分项存在跳项，不能排除条件漏识别；保留原文和原页，本次不作为完整摘录。"})
+            if len(findings) >= 8:
+                break
+        previous = number
+    return findings
+
+
 def scanned_clause_gaps(record, indices):
-    """只读检测当前扫描条文之后的同层级缺号；不猜缺字或把风险传给后条。"""
+    """只读核扫描条文的编号分项及相邻同层条号；不补文字或把风险传给后条。"""
     selected = [record["chunks"][index] for index in indices]
-    findings = []
+    findings = _scanned_list_gaps(record, selected)
     for page in record["pages"]:
         if page.get("method") not in {"OCR", "HYBRID"}:
             continue
