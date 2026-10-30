@@ -31,8 +31,15 @@
         || !Array.isArray(data.preview_pages) || data.preview_pages.length>3
         || new Set(data.preview_pages).size!==data.preview_pages.length
         || data.preview_pages.some(page=>!Number.isInteger(page) || page<1 || page>3)
-        || initialPage!=null && !data.preview_pages.includes(initialPage))
+        )
         throw Error("原件快照暂不可读取，请稍后重开");
+      const navigation=data.page_navigation;
+      if(navigation!=null && (data.source_format==="HTML" || navigation.version!=="ORIGINAL_PDF_PAGES_V1"
+        || !Number.isInteger(navigation.page_count) || navigation.page_count<1 || navigation.page_count>500
+        || navigation.page_count!==data.page_count))throw Error("原件翻页范围无法核对");
+      const pages=navigation ? Array.from({length:navigation.page_count},(_,index)=>index+1) : data.preview_pages;
+      const validPage=page=>Number.isInteger(page) && pages.includes(page);
+      if(initialPage!=null && !validPage(initialPage))throw Error("保存的原页位置无法核对");
       reader.replaceChildren();
       const card=element("section");card.className="pending-original-reader";
       card.append(element("h3",data.title || item.title || "官方PDF原件"));
@@ -53,30 +60,50 @@
         const valueNode=element("dd",value || "待核");valueNode.style.margin="0";
         metadata.append(element("dt",key),valueNode);
       }
-      card.append(metadata);
+      const sourceDetails=element("details"),summary=element("summary",`${data.standard_code || "文号待核"} · 来源信息`);
+      sourceDetails.style.marginBottom="12px";sourceDetails.append(summary,metadata);card.append(sourceDetails);
       const link=element("a",web?"下载完整网页原件":"打开或下载完整PDF原件");link.href=prefix+(web?"/file.html":"/file.pdf");link.target="_blank";link.rel="noopener";
       link.className="secondary-button";card.append(link);
       card.append(element("h4","原页对照"));
       card.append(element("p",web ? "网页原始字节已保存；未生成可检索条文。"
-        : `原件${data.page_count || "页数待核"}页 · 已提供${data.preview_pages.length}页预览；未自动识别或生成条文。`));
-      const controls=element("div"),image=element("img");image.style.maxWidth="100%";image.style.height="auto";
-      image.alt="官方PDF原页预览";
+        : navigation ? `共${navigation.page_count}页 · 按需读取原页；未识别或生成条文。`
+          : `原件${data.page_count || "页数待核"}页 · 已提供${data.preview_pages.length}页预览；未自动识别或生成条文。`));
+      const controls=element("div"),image=element("img"),pageStatus=element("p");
+      controls.style.display="flex";controls.style.flexWrap="wrap";controls.style.alignItems="center";controls.style.gap="8px";
+      image.style.maxWidth="100%";image.style.width="100%";image.style.height="auto";
+      image.alt="官方PDF原页";
       const saved=globalThis.ArchspecPendingSearch?.readingPosition?.();
-      const remembered=data.preview_pages.includes(initialPage) ? initialPage
+      const remembered=validPage(initialPage) ? initialPage
         : saved?.kind==="ORIGINAL_ONLY" && saved.source_id===item.source_id
-          && saved.snapshot_id===item.snapshot_id && data.preview_pages.includes(saved.page) ? saved.page : data.preview_pages[0];
+          && saved.snapshot_id===item.snapshot_id && validPage(saved.page) ? saved.page : pages[0];
+      let selectedPage=0,pageSelect,previous,next;
+      const enlarge=element("a","放大查看本页");enlarge.target="_blank";enlarge.rel="noopener";enlarge.className="secondary-button";
       function showPage(page){
-        if(!current() || !data.preview_pages.includes(page))return;
-        image.src=prefix+`/pages/${page}.png`;
+        if(!current() || !validPage(page))return;
+        selectedPage=page;pageStatus.textContent="";image.hidden=false;
+        image.src=prefix+`/pages/${page}.png`+(navigation?"?quality=reading":"");enlarge.href=image.src;
+        image.alt=`官方PDF原页 · 第${page}页`;
+        if(pageSelect)pageSelect.value=String(page);
+        if(previous)previous.disabled=page===1;
+        if(next)next.disabled=page===navigation.page_count;
         globalThis.ArchspecPendingSearch?.rememberReadingPosition?.(item,{kind:"ORIGINAL_ONLY",page,view:"ORIGINAL"});
       }
-      for(const page of data.preview_pages) {
+      image.addEventListener("error",()=>{if(current()){image.hidden=true;pageStatus.textContent="本页暂不可读，请打开完整PDF原件查看。";}});
+      if(navigation){
+        previous=element("button","上一页");next=element("button","下一页");
+        for(const button of [previous,next]){button.type="button";button.className="secondary-button";}
+        previous.addEventListener("click",()=>showPage(selectedPage-1));next.addEventListener("click",()=>showPage(selectedPage+1));
+        const label=element("label","页码 ");pageSelect=element("select");pageSelect.setAttribute("aria-label","原件页码");
+        pageSelect.style.minHeight="44px";
+        for(const page of pages){const option=element("option",`第${page}页`);option.value=String(page);pageSelect.append(option);}
+        pageSelect.addEventListener("change",()=>showPage(Number(pageSelect.value)));label.append(pageSelect);
+        controls.append(previous,label,next,enlarge);
+      }else for(const page of pages){
         const button=element("button",`第${page}页`);button.type="button";button.className="secondary-button";
-        button.addEventListener("click",()=>showPage(page));
-        controls.append(button);
+        button.addEventListener("click",()=>showPage(page));controls.append(button);
       }
-      card.append(controls);
-      if(data.preview_pages.length){showPage(remembered);card.append(image);}
+      card.append(controls,pageStatus);
+      if(pages.length){showPage(remembered);card.append(image);}
       else {
         // 网页或无法生成预览的原件也保留固定阅读身份；没有预览就不造第1页。
         if(current())globalThis.ArchspecPendingSearch?.rememberReadingPosition?.(item,{kind:"ORIGINAL_ONLY",page:null,view:"ORIGINAL"});

@@ -541,12 +541,19 @@ def original_metadata(source_id: str, snapshot_id: Annotated[str, Path(pattern=r
 
 @router.get("/{source_id}/originals/{snapshot_id}/pages/{page_number}.png")
 def original_preview(source_id: str, snapshot_id: Annotated[str, Path(pattern=r"^[a-f0-9]{64}$")],
-    page_number: Annotated[int, Path(ge=1, le=3)], service: Annotated[OfficialDocumentService, Depends(get_service)]):
+    page_number: Annotated[int, Path(ge=1, le=500)], service: Annotated[OfficialDocumentService, Depends(get_service)],
+    quality: Annotated[Literal["preview", "reading"], Query()] = "preview"):
     from archspec.official_documents.originals import get_original, preview_image
     try:
-        record = get_original(service, source_id, snapshot_id)
-        return Response(preview_image(service, record, page_number), media_type="image/png",
-            headers={"Cache-Control": "private, no-store"})
+        if quality == "preview" and page_number > 3:
+            raise HTTPException(422, "预览仅提供前三页，请选择原页阅读")
+        if quality == "reading":
+            from archspec.official_documents.original_pages import reading_page
+            image = reading_page(service, source_id, snapshot_id, page_number)
+        else:
+            record = get_original(service, source_id, snapshot_id)
+            image = preview_image(service, record, page_number)
+        return Response(image, media_type="image/png", headers={"Cache-Control": "private, no-store"})
     except BusinessFilesUnavailable:
         raise HTTPException(503, "原页存储暂不可用，请稍后查看") from None
     except (OSError, ValueError, LookupError):

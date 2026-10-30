@@ -1817,7 +1817,7 @@
           // 恢复先于联网开关，只重读原来源与原件pin；无预览的位置用null，不推造页码或正文。
           if(!/^(gb55031|official-[a-f0-9]{32})$/.test(saved.source_id || "")
             || !/^[a-f0-9]{64}$/.test(saved.snapshot_id || "") || saved.view!=="ORIGINAL"
-            || !(saved.page===null || Number.isInteger(saved.page) && saved.page>=1 && saved.page<=3)
+            || !(saved.page===null || Number.isInteger(saved.page) && saved.page>=1 && saved.page<=500)
             || !globalThis.ArchSpecOriginalReader?.open)throw Error("保存的原件身份无法核对");
           const restored=await globalThis.ArchSpecOriginalReader.open(
             {source_id:saved.source_id,snapshot_id:saved.snapshot_id},{isCurrent:current,initialPage:saved.page});

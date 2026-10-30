@@ -152,7 +152,12 @@ def get_original(documents, source_id, snapshot_id):
     from archspec.official_documents.source_metadata import code_level
     # 只补读取响应中的编号类别，已登记地域优先；不改写旧原件快照。
     fields = {"level": code_level(record["standard_code"]), **(record.get("source_metadata") or {})}
-    return {**record, "source_metadata": fields}
+    result = {**record, "source_metadata": fields}
+    from archspec.official_documents.original_pages import navigation
+    pages = navigation(documents, result)
+    if pages is not None:
+        result["page_navigation"] = pages
+    return result
 
 
 def original_parts(documents, record):
