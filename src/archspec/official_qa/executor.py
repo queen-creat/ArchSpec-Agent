@@ -775,7 +775,7 @@ class OfficialQAExecutor:
             draft = []
             message = ("本次只读原文，不选择答案或调用整理器" if self.owner.reading_only else
                        "地方间距仍需区分实际条件，只组织固定阅读出处，不生成通用系数" if local_spacing
-                       else "续文未齐，只准备阅读出处，不调用整理器")
+                       else "当前证据尚不足以选择短摘录；保留候选原文，未调用整理器")
             trace.append({"step": "COMPOSE", "state": "SKIPPED", "message": message})
         return draft
 

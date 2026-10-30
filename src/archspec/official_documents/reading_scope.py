@@ -39,7 +39,7 @@ def scoped_object_match(value, text):
 
 
 def focus_prefix_context(query, subjects, *, background_use=None, clause=False):
-    """保留首个对象前未被角色覆盖的原字，不推断它是用途、等级或工程事实。
+    """保留对象前及多个对象之间未覆盖的原字，不推断用途、等级或工程事实。
 
     明确书名/编号仍由来源范围核对；提问语气沿用现有词表。条文模式只去开头
     的数字条号，不能把条号误当范围。没有此结构时返回空，不猜后置修饰关系。
@@ -55,11 +55,23 @@ def focus_prefix_context(query, subjects, *, background_use=None, clause=False):
     content = re.sub(r"\s+", "", requested_content(query))
     if clause:
         content = re.sub(r"^\d+(?:\.\d+){1,3}", "", content)
-    starts = [content.find(re.sub(r"\s+", "", subject)) for subject in subjects]
-    starts = [start for start in starts if start >= 0]
-    if not starts:
+    spans = []
+    for subject in subjects:
+        value = re.sub(r"\s+", "", subject)
+        start = content.find(value)
+        if start >= 0:
+            spans.append((start, start + len(value)))
+    if not spans:
         return ()
-    prefix = PUBLIC_CODE.sub(" ", content[:min(starts)])
+    spans.sort()
+    pieces, end = [content[:spans[0][0]]], spans[0][1]
+    for start, stop in spans[1:]:
+        # 多个原字对象可拆分，夹在对象之间的范围不能随模型拆分丢失。
+        # 重叠对象不产生虚构间隙；只保留同次原问/原陈述的真实连续子串。
+        if start > end:
+            pieces.append(content[end:start])
+        end = max(end, stop)
+    prefix = PUBLIC_CODE.sub(" ", " ".join(pieces))
     for title in extract_public_titles(prefix):
         prefix = prefix.replace(title, " ")
     if background_use and (pattern := use_background_pattern(background_use)):
