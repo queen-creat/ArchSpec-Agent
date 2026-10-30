@@ -471,6 +471,13 @@ def _preferred_reading_indices(prepared, snapshot):
 
     if table_lookup_subject(prepared.question_plan.search_query) is not None:
         return table_caption_indices(prepared.question_plan.search_query, snapshot, prepared.question_plan.conditions)
+    from archspec.official_documents.classification_lookup import (
+        classification_indices,
+        classification_subject,
+    )
+
+    if classification_subject(prepared.question_plan.search_query) is not None:
+        return classification_indices(prepared.question_plan.search_query, snapshot)
     rows = snapshot["chunks"]
     runs = clause_runs(rows)
     groups = defaultdict(list)
