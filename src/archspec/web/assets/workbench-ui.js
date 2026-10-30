@@ -103,6 +103,12 @@
   const details=doc.querySelector('#pending-reading-info'),onlinePanel=doc.querySelector('#pending-online-panel');
   const tools=doc.querySelector('#search-tools'),toolsSummary=doc.querySelector('#search-tools-summary'),statusBar=doc.querySelector('#workbench-status-bar');
   let configured;
+  // Reuse the flow-owned action; it still checks query identity and current access.
+  function candidateReview(){
+   if(onlineSummary?.hidden!==false || online?.getAttribute('data-flow-state')!=='NO_EVIDENCE'
+    ||online?.getAttribute('data-observation-current')!=='READABLE')return null;
+   return doc.querySelector('.query-review-candidates');
+  }
   function paintStatus(){
    if(primary){const state=statusSummary({lookup:{text:lookup?.textContent,visible:lookup?.hidden===false,tone:lookup?.getAttribute('data-tone'),observationSource:lookup?.getAttribute('data-observation-source')},
     search:{text:search?.textContent},online:{text:online?.textContent,visible:onlineSummary?.hidden===false,tone:online?.getAttribute('data-tone'),flowState:online?.getAttribute('data-flow-state'),observationCurrent:online?.getAttribute('data-observation-current'),historical:online?.getAttribute('data-query-history')==='true'},
@@ -112,7 +118,13 @@
     primary.textContent=state.message;primary.setAttribute('data-tone',state.tone);
     if(statusBar)statusBar.hidden=!(search?.textContent?.trim()||lookup?.hidden===false||onlineSummary?.hidden===false||searchButton?.disabled===true);}
    if(toolsSummary)toolsSummary.textContent=scope?.value&&scope.value!=='__all__'?'更多选项 · 已限定范围':'更多选项';
-   progress?.setAttribute('aria-expanded',String(onlinePanel?.open===true||details?.open===true));
+   if(progress){
+    const review=candidateReview();
+    progress.textContent=review?'查看候选原文':'详情';
+    progress.disabled=Boolean(review?.disabled);
+    progress.setAttribute('aria-controls',review?'pending-search-results':'pending-online-panel pending-reading-info');
+    progress.setAttribute('aria-expanded',String(review?false:onlinePanel?.open===true||details?.open===true));
+   }
   }
   function paintEmpty(){
    const currentRefusal=lookup?.hidden===false&&['RESTRICTED','UNAVAILABLE'].includes(lookup?.getAttribute('data-observation-source'));
@@ -120,6 +132,8 @@
    if(guide)guide.hidden=Boolean(results?.querySelector('.pending-result-card')||results?.querySelector('[data-readable-unconfirmed-count]'))||currentRefusal||searchButton?.disabled===true;
   }
   progress?.addEventListener('click',()=>{
+   const review=candidateReview();
+   if(review){if(!review.disabled)review.click();return;}
    if(tools)tools.open=true;
    // 复用原有联网进度入口及其权限/任务守卫，不增加第二套查询或轮询。
    if(onlineSummary?.hidden===false)doc.querySelector('#pending-online-jump')?.click();
@@ -133,7 +147,7 @@
   if(typeof MutationObserver==='function'){
    // 各模块继续持有原状态节点；仅观察其已提交文本，不抢占业务状态或复制处理循环。
    const observer=new MutationObserver(()=>{paintStatus();paintEmpty();});
-   [lookup,search,online,onlineSummary,coverage,model,results,searchButton].filter(Boolean).forEach(node=>
+   [lookup,search,online,onlineSummary,coverage,model,results,searchButton,doc.querySelector('#pending-online-results')].filter(Boolean).forEach(node=>
     observer.observe(node,{childList:true,characterData:true,subtree:true,attributes:true,attributeFilter:['hidden','data-tone','disabled','data-flow-state','data-observation-current','data-observation-source','data-query-history']}));
    [details,onlinePanel].filter(Boolean).forEach(node=>observer.observe(node,{attributes:true,attributeFilter:['open','hidden']}));
   }
