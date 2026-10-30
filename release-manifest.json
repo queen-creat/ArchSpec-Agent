@@ -42,7 +42,7 @@
     "src/archspec/documents/repository.py": "1e9a62d49436cf4d5af1adf09f94e70bc2568e27b6bdb905a0e02c5ad20a48af",
     "src/archspec/documents/router.py": "bb85034bed3c7261659c52f70a3691bdb2f59b96ef48ef55751158cb2273b645",
     "src/archspec/documents/schemas.py": "712c4b71c29fd8ae457641babd77542989a02f9c3e2ec3e5e9914246bc3c41ad",
-    "src/archspec/documents/service.py": "43a5d6635514398ab75391584b5ab1896e54baae9053a979b0e05eaf97bca80b",
+    "src/archspec/documents/service.py": "de30b0349de0f302789d1359af1a76c7c4ed72fb5f9718af98f0b3dae86fe413",
     "src/archspec/dossier/__init__.py": "42e6064fcbd1cc22f8cb372fb7b0d681f0cbb589a61d21ba11acd340f4972e03",
     "src/archspec/dossier/assessment.py": "5da8451c51f698c2f17f708956d2d6ebcd30477bfd849ee9dbe287ec5b55cfa6",
     "src/archspec/dossier/report.py": "cdf402a84be7e142cccb3d1a219594b9c4aa1e6488ffd1cdf6036a84d3f435b7",

@@ -144,13 +144,8 @@ class DocumentService:
         if record is None:
             return None
 
-        from archspec.persistence.business_files import assert_runtime_file
-        assert_runtime_file(self.upload_dir / record.stored_name)
         try:
-            parsed = self.parser.parse(
-                self.upload_dir / record.stored_name,
-                record.media_type,
-            )
+            parsed = self._parse_verified_original(record)
             drafts = self.chunker.chunk(parsed.blocks)
             self.chunk_repository.replace_for_document(
                 document_id, drafts, commit=False
@@ -167,6 +162,36 @@ class DocumentService:
         except (DocumentParseError, NoValidChunks) as error:
             self.repository.rollback()
             raise DocumentUploadError(f"重新处理失败：{error}") from error
+
+    def _parse_verified_original(self, record):
+        """Parse a bounded verified copy; never rewrite the uploaded original."""
+        from tempfile import TemporaryDirectory
+
+        from archspec.persistence.business_files import assert_runtime_file
+
+        name = record.stored_name
+        if not name or Path(name).name != name or name in {".", ".."}:
+            raise DocumentUploadError("上传原件路径无法核对，原有解析结果已保留")
+        original = self.upload_dir / name
+        if original.is_symlink():
+            raise DocumentUploadError("上传原件路径无法核对，原有解析结果已保留")
+        assert_runtime_file(original)
+        try:
+            with TemporaryDirectory(prefix="archspec-verified-input-") as folder:
+                verified = Path(folder) / name
+                digest, size = hashlib.sha256(), 0
+                with original.open("rb") as source, verified.open("wb") as target:
+                    for block in iter(lambda: source.read(1024 * 1024), b""):
+                        size += len(block)
+                        if size > record.size_bytes:
+                            raise DocumentUploadError("上传原件与登记不一致，原有解析结果已保留")
+                        digest.update(block)
+                        target.write(block)
+                if size != record.size_bytes or digest.hexdigest() != record.sha256:
+                    raise DocumentUploadError("上传原件与登记不一致，原有解析结果已保留")
+                return self.parser.parse(verified, record.media_type)
+        except OSError as error:
+            raise DocumentUploadError("上传原件无法读取，原有解析结果已保留") from error
 
     def list_chunks(self, document_id: str) -> list[DocumentChunkRecord] | None:
         """返回有序片段；None 专门表示文档本身不存在。"""
