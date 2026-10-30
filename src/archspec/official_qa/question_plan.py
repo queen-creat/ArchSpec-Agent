@@ -17,6 +17,7 @@ from archspec.official_qa.garage_conditions import garage_query_conditions
 from archspec.official_qa.height_conditions import height_query_conditions
 from archspec.official_qa.height_measurement import height_topic
 from archspec.official_qa.intents import (
+    explicit_reference_lookup,
     fire_area_question,
     height_measurement_question,
     height_use_category,
@@ -322,6 +323,10 @@ class LocalPlanner:
             topic = "DAYLIGHT_COEFFICIENT"
             if daylight_value_question(query):
                 operation = "CONDITIONED_LIMIT"
+        # 查原文和取值共享主题，操作由原问的明确请求决定，不猜条件或换来源。
+        if (topic != "UNKNOWN" and "REFERENCE_LOOKUP" in TOPIC_OPERATIONS[topic]
+                and explicit_reference_lookup(query)):
+            operation = "REFERENCE_LOOKUP"
         literal = (_literal_measurement_focus(query)
                    if topic == "UNKNOWN" and allow_reference_focus else None)
         if literal is not None:
@@ -338,6 +343,15 @@ def bind_literal_model_intent(proposal, query, public_conditions):
     """合并原问明确结构时同时绑定对象与操作；原模型提案和恢复记录不回写。"""
     if proposal.understanding != "CLEAR":
         return proposal, {}
+    if (proposal.topic != "UNKNOWN" and proposal.operation in {"CONDITIONED_LIMIT", "CALCULATION_RULES"}
+            and "REFERENCE_LOOKUP" in TOPIC_OPERATIONS[proposal.topic]
+            and explicit_reference_lookup(query)):
+        payload = proposal.semantic_payload()
+        payload["operation"] = "REFERENCE_LOOKUP"
+        bound = ModelSemanticProposal.model_validate(payload)
+        return bound, {"plan_resolution": {"rule": "EXPLICIT_REFERENCE_LOOKUP_V1",
+            "proposed_topic": proposal.topic, "effective_topic": bound.topic,
+            "proposed_operation": proposal.operation, "operation": bound.operation}}
     literal = LocalPlanner().propose(query, public_conditions)
     focus = literal.get("query_focus")
     if literal["topic"] != "UNKNOWN" or focus is None:

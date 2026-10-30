@@ -21,6 +21,7 @@ from archspec.official_qa.garage_rules import required_garage_evidence
 from archspec.official_qa.height_conditions import height_condition_issues
 from archspec.official_qa.height_measurement import measurement_text
 from archspec.official_qa.intents import (
+    explicit_reference_lookup,
     height_use_category,
     highrise_definition_evidence,
     net_height_question,
@@ -267,6 +268,9 @@ class ConditionPolicy:
 
     def followups(self, conditions: Mapping, *, items=(), units=()) -> list[dict]:
         """按实际已核全条判断缺项；标签来自共用登记，不生成工程值。"""
+        if self.operation == "REFERENCE_LOOKUP" and explicit_reference_lookup(self.original_query):
+            # 明确只查原文时不追问选值条件；不改变来源、对象和完整性核对。
+            return []
         if self.height_measurement:
             # 只在已核全条明确讨论设备/突出用房的面积例外后触发后两问。
             # 当前真实原字决定需求；问题里的“机房”不是设备性质证明。
