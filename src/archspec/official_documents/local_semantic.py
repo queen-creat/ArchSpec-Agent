@@ -29,6 +29,14 @@ def provider():
 
 def search(snapshots, query, top_k, *, cache_dir):
     """输入仅为本轮已核范围/许可的正文；派生向量不能授予读取权限。"""
+    from archspec.official_documents.clause_units import CLAUSE
+
+    if CLAUSE.fullmatch(query):
+        # The caller already checked source scope and current reading permission.
+        # Exact identifiers never require vector preparation or a model download.
+        from archspec.official_documents.search import search_snapshots
+
+        return search_snapshots(snapshots, query, top_k, ranking_version="V1", index_dir=None)
     if not configured():
         raise ValueError("本机语义模型尚未准备；可继续使用关键词查找。")
     if not snapshots:
