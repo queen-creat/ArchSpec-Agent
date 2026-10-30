@@ -19,6 +19,11 @@
   let includeRelated = false;
   // 当前读取门的否决只归属同一次查询和固定绑定；历史原响应保留，不写回后台观察。
   let readContext = null, readabilityEpoch = 0, readabilityDenial = null;
+  function currentRetrievalMode(query,sourceId,projectId){
+    return readContext?.generation===searchGeneration && readContext.query===query
+      &&readContext.sourceId===sourceId && readContext.projectId===projectId
+      &&readContext.retrievalMode==='SEMANTIC' ? 'SEMANTIC' : 'KEYWORD';
+  }
   let qaLookupOwner = null;
   const readingTrail = globalThis.ArchSpecReadingTrail?.create();
   const currentProject = () => document.querySelector("#search-project")?.value || "";
@@ -198,7 +203,7 @@
         if (retry.disabled || button.disabled || generation !== searchGeneration || data !== resultSet) return;
         retry.disabled = true;
         // 沿原请求的项目/选书和读取门，不发query-start，不触发发现、问答或下载。
-        await submitSearch({notifyOnline:false, preserveResults:true, retrievalMode:"SEMANTIC", explicitRead:true});
+        await submitSearch({notifyOnline:false, preserveResults:true, reuseGeneration:true, retrievalMode:"SEMANTIC", explicitRead:true});
         if (generation === searchGeneration) retry.disabled = false;
       });
       controls.append(retry);
@@ -1704,7 +1709,7 @@
     const sourceId = sourceSelect?.value || "gb55031";
     const projectId = currentProject(), requestSerial = ++cacheRequestSerial;
     const ownReadabilityEpoch = readabilityEpoch;
-    readContext = {generation, query, sourceId, projectId};
+    readContext = {generation, query, sourceId, projectId, retrievalMode};
     // __all__ 是网页上的“全部”选项，不是某一本规范的来源编号。
     const scopedIds=sourceId.startsWith('set:')?globalThis.ArchSpecSourceScope?.decode(sourceId):sourceId==='__all__'?null:[sourceId];
     if(scopedIds===undefined){status.textContent='所选多本范围无法核对，请重新选择；未扩大为全部正文。';button.disabled=false;return false;}
@@ -1732,7 +1737,7 @@
         document.dispatchEvent(new CustomEvent("archspec:query-start", {detail: {
           query, sourceId, isCurrent, localFinished,
           onPrepared, reuseQueryFlow, publicTitlesReady,
-          refreshCached: () => isCurrent() ? submitSearch({notifyOnline: false, preserveResults: true, reuseGeneration: true}) : Promise.resolve(),
+          refreshCached: () => isCurrent() ? submitSearch({notifyOnline: false, preserveResults: true, reuseGeneration: true, retrievalMode:currentRetrievalMode(query,sourceId,projectId)}) : Promise.resolve(),
         }}));
       }
       let response = await initialRequest;
@@ -1780,7 +1785,8 @@
     if(!listed || !ownerCurrent()) return false;
     // 走原检索及阅读入口；不发query-start，不附带onPrepared，不调用问答/模型。
     // 同题重检保留现有查询代次；外层owner继续负责取消，避免重检自行使当前流程失效。
-    return submitSearch({notifyOnline:false,ownerCurrent,reuseGeneration:true,explicitRead:userAction});
+    return submitSearch({notifyOnline:false,ownerCurrent,reuseGeneration:true,explicitRead:userAction,
+      retrievalMode:currentRetrievalMode(expectedQuery,sourceId,expectedProject)});
   }
   let readingRestoreTask=null;
   function restoreReadingPosition() {
