@@ -1,0 +1,24 @@
+.venv/
+.uv-cache/
+__pycache__/
+.pytest_cache/
+.test-tmp/
+.verification-*/
+.ruff_cache/
+*.py[cod]
+data/
+archspec.db
+.env
+.env.local
+.env.*.local
+# 本机私有配置（包括旧入口配置），不读取文件内容也能阻止误纳入。
+.env.*
+*.local.env
+*.private.env
+!.env.example
+
+# 本地接续与内部验收记录不随源码分发。
+docs/验收记录/
+docs/接续开发说明.md
+docs/长期目标与工作约束.md
+docs/项目概况与待办任务.md

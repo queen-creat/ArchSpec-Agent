@@ -1,0 +1,94 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>任务书要求与规范匹配</title>
+  <link rel="stylesheet" href="/assets/evaluation-center.css">
+</head>
+<body>
+  <header class="page-header">
+    <div class="page-width">
+      <p class="eyebrow">建筑设计教学辅助工具</p>
+      <h1>任务书要求与规范匹配</h1>
+      <p class="lead">系统先整理资料中的设计要求，再从建筑规范中列出可能相关的条文，最后由专业人员确认。</p>
+    </div>
+  </header>
+
+  <main class="page-width">
+    <section class="panel" aria-labelledby="choose-title">
+      <div class="step-heading">
+        <span class="step-number">1</span>
+        <div>
+          <h2 id="choose-title">选择任务书</h2>
+          <p>系统会自动检索全部建筑规范，不需要逐份选择。</p>
+        </div>
+      </div>
+      <div class="document-grid">
+        <div class="field-card">
+          <label for="task-select">设计任务书</label>
+          <select id="task-select"><option value="">正在读取文件……</option></select>
+          <button class="text-button" id="upload-task" type="button">上传一份新任务书</button>
+          <input id="task-file" type="file" accept=".txt,.docx,.pdf" hidden>
+        </div>
+        <div class="field-card">
+          <div class="library-title">建筑规范资料库</div>
+          <p class="library-count" id="regulation-count">正在读取规范……</p>
+          <ul class="library-list" id="regulation-list"></ul>
+          <button class="text-button" id="upload-regulation" type="button">继续上传建筑规范</button>
+          <input id="regulation-file" type="file" accept=".txt,.docx,.pdf" hidden>
+        </div>
+      </div>
+      <div class="retrieval-status" id="retrieval-status" role="status">
+        <span class="retrieval-dot" aria-hidden="true"></span>
+        <span><strong>检索方式：</strong>正在检查本地检索能力……</span>
+      </div>
+      <button class="primary-button" id="start-button" type="button">开始自动整理</button>
+      <p class="status-message" id="page-status" role="status"></p>
+    </section>
+
+    <section class="panel hidden" id="requirements-section" aria-labelledby="requirements-title">
+      <div class="step-heading">
+        <span class="step-number">2</span>
+        <div>
+          <h2 id="requirements-title">自动整理设计要求</h2>
+          <p>以下内容来自任务书原文。系统会自动检索规范，并保存本次审查记录和每一步的证据来源。</p>
+        </div>
+      </div>
+      <div id="requirements-list" class="requirements-list"></div>
+    </section>
+
+    <section class="panel hidden" id="summary-section" aria-labelledby="summary-title">
+      <div class="step-heading">
+        <span class="step-number">3</span>
+        <div>
+          <h2 id="summary-title">确认相关条文</h2>
+          <p>候选条文只是检索建议，不会自动当成正确答案。请专业人员确认后再加入记录。</p>
+        </div>
+      </div>
+      <div class="summary-box" id="summary-box">尚未确认条文。</div>
+      <a class="secondary-button report-link hidden" id="report-link" target="_blank" rel="noopener noreferrer">查看或保存审查报告</a>
+    </section>
+  </main>
+
+  <template id="requirement-template">
+    <article class="requirement-card">
+      <div class="requirement-topline">
+        <span class="requirement-order"></span>
+        <span class="state-badge"></span>
+      </div>
+      <p class="source-heading"></p>
+      <h3 class="requirement-text"></h3>
+      <p class="candidate-title">可能相关的规范条文</p>
+      <div class="candidate-list"></div>
+      <div class="card-actions">
+        <button class="confirm-button" type="button">确认所选条文</button>
+        <button class="no-evidence-button" type="button">这些都不合适</button>
+      </div>
+      <p class="card-message" role="status"></p>
+    </article>
+  </template>
+
+  <script src="/assets/evaluation-center.js" defer></script>
+</body>
+</html>

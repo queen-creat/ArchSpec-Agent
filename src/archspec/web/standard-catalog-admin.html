@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>规范库状态</title>
+  <link rel="stylesheet" href="/assets/standard-catalog-admin.css">
+</head>
+<body>
+  <header class="topbar">
+    <div class="page-width topbar-inner">
+      <div><p class="eyebrow">ARCHSPEC AGENT</p><h1>规范库状态</h1></div>
+      <a href="/project-workbench.html">返回项目工作台</a>
+    </div>
+  </header>
+  <main class="page-width">
+    <section class="notice">
+      <strong>题录核验与正文获取分开进行</strong>
+      <p>题录刷新核对规范的“身份证信息”。下方正文获取仅处理已登记的官方附件，识别结果留在待审核区，不自动作为审查结论。当前为本地管理页面，不适合直接开放到公网。</p>
+    </section>
+    <section class="panel">
+      <div class="panel-heading">
+        <div><p class="eyebrow">官方附件 · 待审核</p><h2>民用建筑通用规范正文</h2></div>
+        <button id="official-acquire" type="button">获取或复用正文</button>
+      </div>
+      <p>当前接入 GB 55031-2022 的一份官方公开附件。扫描件自动进行本机文字识别；版本、使用权限和关键条文仍需核验。没有接入全部规范。</p>
+      <label><input id="official-refresh" type="checkbox">重新联网检查附件（文件未变化则不重复识别）</label>
+      <p id="official-status" class="status-message" role="status">正在读取已有结果……</p>
+      <div id="official-preview"></div>
+    </section>
+    <section class="status-grid" aria-label="规范库统计">
+      <article><span>目录总数</span><strong id="total-count">—</strong></article>
+      <article><span>官方已核验</span><strong id="verified-count">—</strong></article>
+      <article><span>待核验或失败</span><strong id="pending-count">—</strong></article>
+      <article><span>正文已入库</span><strong id="fulltext-count">—</strong></article>
+    </section>
+    <section class="panel">
+      <div class="panel-heading">
+        <div><p class="eyebrow">手动操作</p><h2>刷新已有规范题录</h2></div>
+        <button id="sync-button" type="button">刷新已有规范题录</button>
+      </div>
+      <p>题录刷新不会下载规范全文，只核验已经保存了具体住建部公告链接的目录项；没有具体公告地址的规范保持“待核验”。正文获取请使用上方独立按钮。</p>
+      <p id="sync-status" class="status-message" role="status"></p>
+    </section>
+    <section class="panel">
+      <div class="panel-heading"><div><p class="eyebrow">操作记录</p><h2>最近同步</h2></div></div>
+      <div id="sync-history"><p class="empty">正在读取同步记录……</p></div>
+    </section>
+  </main>
+  <script src="/assets/standard-catalog-admin.js" defer></script>
+</body>
+</html>

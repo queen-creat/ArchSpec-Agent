@@ -1,0 +1,602 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>建筑规范查阅工作台</title>
+  <link rel="stylesheet" href="/assets/project-workbench.css?v=33027a611e56">
+  <link rel="stylesheet" href="/assets/workbench-ui.css?v=50884f931c69">
+</head>
+<body>
+  <a class="skip-to-content" href="#workbench-main">跳到工作区</a>
+  <header class="topbar">
+    <div class="page-width topbar-inner">
+      <a class="brand" href="/project-workbench.html" aria-label="返回工作台首页">
+        <span class="brand-mark" aria-hidden="true"><svg viewBox="0 0 28 28" fill="none" stroke="currentColor" stroke-width="1.3"><path d="M4 24V5h20v19M3 24h22M10 5v19M18 5v19M4 12h20M4 19h20"/><path d="M12 24v-4h4v4"/></svg></span>
+        <span><strong>建筑规范查阅工作台</strong><small>ArchSpec Agent</small></span>
+      </a>
+      <nav id="workbench-navigation" class="workbench-navigation" aria-label="工作台功能">
+        <button type="button" data-workbench-view="search" aria-pressed="true">查规范</button>
+        <button type="button" data-workbench-view="projects" aria-pressed="false">我的项目</button>
+        <button type="button" data-workbench-view="library" aria-pressed="false">规范库</button>
+      </nav>
+      <button id="workbench-atmosphere" class="atmosphere-toggle" type="button" aria-pressed="true">关闭背景氛围</button>
+    </div>
+  </header>
+
+  <main id="workbench-main" class="page-width" tabindex="-1">
+    <section class="hero">
+      <div>
+        <h1 id="workbench-title">查条文，核对出处</h1>
+        <p id="workbench-purpose" class="safety-note" hidden></p>
+      </div>
+      <button class="secondary-button" id="show-project-form" type="button">＋ 新建项目</button>
+    </section>
+    <p id="workbench-current-project" class="workbench-context" hidden></p>
+    <p id="projects-empty-hint" data-workbench-section="projects" class="workbench-hint" hidden>先选择或新建项目，再查看工程条件和上传资料。直接查规范不需要先建项目。</p>
+
+    <section class="panel project-form-panel hidden" id="project-form-panel" data-workbench-section="projects" hidden aria-labelledby="project-form-title">
+      <div class="section-heading">
+        <div><p class="step-label">建立项目档案</p><h2 id="project-form-title">新建设计项目</h2></div>
+        <button class="icon-button" id="close-project-form" type="button" aria-label="关闭">×</button>
+      </div>
+      <form id="project-form" class="project-form">
+        <label class="field field-wide"><span>项目名称 *</span><input name="name" required maxlength="200" placeholder="例如：东湖研发中心"></label>
+        <label class="field"><span>项目编号</span><input name="project_code" maxlength="100" placeholder="例如：2026-017"></label>
+        <label class="field"><span>所在城市</span><input name="city" maxlength="100" placeholder="例如：广州"></label>
+        <label class="field"><span>建筑类型</span>
+          <select name="building_type">
+            <option value="OFFICE">办公建筑</option><option value="RESIDENTIAL">居住建筑</option>
+            <option value="COMMERCIAL">商业建筑</option><option value="EDUCATION">教育建筑</option>
+            <option value="HEALTHCARE">医疗建筑</option><option value="CULTURAL">文化建筑</option>
+            <option value="HOTEL">旅馆建筑</option><option value="INDUSTRIAL">工业建筑</option>
+            <option value="OTHER">其他</option>
+          </select>
+        </label>
+        <label class="field"><span>设计阶段</span>
+          <select name="design_stage">
+            <option value="CONCEPT">方案设计</option><option value="PRELIMINARY">初步设计</option>
+            <option value="CONSTRUCTION_DOCUMENTS">施工图设计</option><option value="OTHER">其他</option>
+          </select>
+        </label>
+        <label class="field"><span>建筑高度（米）</span><input name="height_m" type="number" min="0" step="0.1" placeholder="可不填"></label>
+        <label class="field"><span>地上层数</span><input name="above_ground_floors" type="number" min="0" step="1" placeholder="可不填"></label>
+        <div class="form-actions field-wide">
+          <p class="inline-status" id="project-form-status" role="status"></p>
+          <button class="primary-button" type="submit">保存项目</button>
+        </div>
+      </form>
+    </section>
+
+    <section class="panel pending-search-panel" id="pending-search-panel" data-workbench-section="search" aria-labelledby="pending-search-title">
+      <div class="section-heading search-panel-heading">
+        <div><h2 id="pending-search-title">查规范</h2></div>
+        <button class="text-link quiet-button" type="button" data-workbench-view="library" aria-pressed="false">查看规范库 →</button>
+      </div>
+      <p class="section-description">输入问题或条款号，在候选列表中选择一条阅读；需要时再对照原页。</p>
+      <div class="workbench-query-toolbar"><form id="pending-search-form" class="pending-search-form">
+        <label class="field"><span class="visually-hidden">问题、关键词或完整条款号</span><input id="pending-query" required maxlength="500" placeholder="输入问题、规范名称、编号或条款号"></label>
+        <button id="pending-search-button" class="primary-button" type="submit">查找条文</button>
+      </form></div>
+      <details id="search-tools" class="search-tools">
+        <summary id="search-tools-summary">更多选项</summary>
+
+      <div class="pending-search-controls">
+        <label class="field pending-source-field"><span>检索范围</span><select id="pending-source"><option value="__all__" selected>全部已准备正文</option><option value="gb55031">民用建筑通用规范 · GB 55031-2022</option></select></label>
+        <div class="pending-online-options">
+          <label><input id="pending-online-enabled" type="checkbox" checked aria-describedby="pending-online-hint"><span>联网补充官方资料</span></label>
+        </div>
+      </div>
+      <div class="official-qa-entry">
+        <button id="official-qa-start" class="secondary-button" type="button" aria-expanded="false" aria-controls="official-qa-panel">按出处整理回答</button>
+        <label class="official-qa-model-option"><input id="official-qa-model-enabled" type="checkbox"><span>使用 DeepSeek</span></label>
+      </div>
+            <details id="multi-source-scope" class="multi-source-scope">
+        <summary id="multi-source-summary">自选多本规范</summary>
+        <p class="multi-source-note">选择已准备正文后点击使用，最多20本。自选范围只查缓存；选择范围不代表规范现行或适用于工程。</p>
+        <p id="multi-source-current" class="multi-source-note"></p>
+        <div id="multi-source-list" class="multi-source-list"></div>
+        <div class="multi-source-actions"><button id="multi-source-apply" type="button" class="secondary-button" disabled>使用所选规范</button><button id="multi-source-all" type="button" class="quiet-button">查全部已准备正文</button></div>
+        <p id="multi-source-status" role="status" aria-live="polite"></p>
+      </details>
+      <details id="pending-reading-info" class="pending-result-details pending-reading-info">
+        <summary>查阅与处理说明 · 模型发送范围</summary>
+      <p id="pending-online-hint" class="pending-online-hint">联网只发送公共规范编号或登记主题，不发送问题原文；单份范围只查缓存。</p>
+        <p><span id="workbench-model-state" role="status">读取模型配置…</span></p>
+        <p id="pending-lookup-status" class="pending-lookup-status" role="status" hidden></p>
+          <p id="pending-coverage-hint" class="pending-coverage-hint">正在读取已准备的正文清单。</p>
+      <p>仅全部正文范围启用。官网查询只使用公共规范编号、登记题名或固定主题，不发送问题原文；宜昌走独立官方入口，单份试查只查缓存。</p>
+
+      <p id="pending-search-status" class="inline-status" role="status"></p>
+      <div id="pending-online-summary" class="pending-online-summary" hidden>
+        <p id="pending-online-status" class="inline-status" role="status"></p>
+        <button id="pending-online-jump" class="text-link quiet-button" type="button">查看官方线索与进度 ↓</button>
+      </div>
+
+        <p>仅在勾选模型后发送本轮问题、手填条件及获准正文；不发送任务书。正文发送许可、版本核验与工程适用性相互独立。</p>
+        <p>正文由文件提取或图片识别得到，版本及使用范围尚未核验。文件页码不是印刷页码；可通过原页对照核查数字、单位和适用条件。</p>
+      </details>
+          <details id="clause-bookmarks" class="clause-bookmarks">
+            <summary id="clause-bookmark-summary">收藏条文（0）</summary>
+            <p class="clause-bookmark-note">按当前项目保存于此浏览器；重新打开时核对固定出处，版本与适用性仍待核。</p>
+            <button id="clause-compare-open" type="button" class="quiet-button" disabled>对照所选条文（0/4）</button>
+            <button id="clause-bookmark-export" type="button" class="quiet-button" disabled>导出查阅清单</button>
+            <label id="clause-bookmark-export-panel" class="clause-bookmark-export-panel" hidden>查阅清单（仅保存位置与已保存的个人笔记）<textarea id="clause-bookmark-export-text" readonly rows="8"></textarea></label>
+            <div id="clause-bookmark-list"></div>
+            <p id="clause-bookmark-status" role="status" aria-live="polite"></p>
+          </details>
+          <section id="workbench-recent-section" hidden aria-label="本页最近查询"><span class="workbench-recent-label">最近查询 · 仅保留在本页</span><div id="workbench-recent-queries" class="workbench-chips"></div></section>
+          <button id="pending-reading-toggle" class="secondary-button" type="button" aria-expanded="false" aria-controls="pending-reading-dialog">展开阅读区</button>
+      <details id="question-worklist" class="question-worklist">
+        <summary id="question-worklist-summary">问题清单（0待查 / 0题）</summary>
+        <p id="question-worklist-owner" class="question-worklist-note"></p>
+        <p class="question-worklist-note">仅在当前浏览器保存。每行一题，最多一次10题；点击题目后逐题查阅，不会自动查询、联网或调用模型。</p>
+        <label class="field"><span>要核对的问题</span><textarea id="question-worklist-input" maxlength="6000" rows="3" placeholder="例如：建筑高度怎样计算？&#10;地下车库防火分区怎样划分？"></textarea></label>
+        <div class="question-worklist-actions"><button id="question-worklist-add" type="button" class="secondary-button">加入清单</button><button id="question-worklist-add-current" type="button" class="quiet-button">加入当前问题</button></div>
+        <p id="question-worklist-status" role="status" aria-live="polite"></p>
+        <div id="question-worklist-items"></div>
+        <div class="question-worklist-pages"><button id="question-worklist-previous" type="button" class="quiet-button" disabled>上一页</button><span id="question-worklist-page"></span><button id="question-worklist-next" type="button" class="quiet-button" disabled>下一页</button></div>
+      </details>
+      <details id="condition-presets" class="condition-presets">
+        <summary id="condition-preset-summary">常用条件方案（0）</summary>
+        <p id="condition-preset-owner" class="condition-preset-note"></p>
+        <p class="condition-preset-note">仅保存自己手填的条件。填入会替换本轮手填值及项目资料勾选项；不会提交查询或启用模型，请核对后再整理。</p>
+        <div class="condition-preset-toolbar"><label class="field"><span>方案名称</span><input id="condition-preset-name" maxlength="40" placeholder="如：主楼、地下车库"></label><button id="condition-preset-save" type="button" class="quiet-button">保存当前手填条件</button></div>
+        <p id="condition-preset-status" role="status" aria-live="polite"></p>
+        <div id="condition-preset-list"></div>
+      </details>
+      <button id="official-qa-project-preview" class="quiet-button" type="button" hidden>从项目资料选择条件</button>
+      <details id="qa-history" class="qa-history">
+        <summary>历史问题 · 返回继续</summary>
+        <p class="qa-history-note">按当前项目显示。打开只恢复原问题和等待状态；重新整理、联网或模型调用仍需主动操作。</p>
+        <div class="qa-history-toolbar"><button id="qa-history-refresh" type="button" class="quiet-button">刷新列表</button><button id="qa-history-previous" type="button" class="quiet-button" disabled>上一页</button><button id="qa-history-next" type="button" class="quiet-button" disabled>下一页</button></div>
+        <p id="qa-history-status" role="status" aria-live="polite"></p>
+        <div id="qa-history-list"></div>
+      </details>
+      <section id="official-qa-panel" class="official-qa-panel" hidden aria-labelledby="official-qa-title">
+        <div class="official-qa-heading"><h3 id="official-qa-title">按出处整理回答</h3><button id="official-qa-close" class="quiet-button" type="button">收起</button></div>
+        <p id="official-qa-notice" class="official-qa-notice">本地整理 · 出处待核验</p>
+        <p id="official-qa-state" class="inline-status" role="status"></p>
+        <div id="official-qa-task-controls" hidden>
+          <p id="official-qa-task-state" class="inline-status" role="status"></p>
+          <button id="official-qa-task-resume" class="secondary-button" type="button">继续本题</button>
+          <button id="official-qa-task-refresh" class="quiet-button" type="button">刷新状态</button>
+          <a id="official-qa-task-entry" class="quiet-button" href="/" hidden>重新打开访问入口</a>
+          <button id="official-qa-local-read" class="secondary-button" type="button" hidden>仅在本地重新整理</button>
+        </div>
+        <details id="official-qa-condition-options" class="official-qa-context" hidden>
+          <summary id="official-qa-condition-summary">按项目情况缩小范围（选填）</summary>
+          <p id="official-qa-condition-help" class="official-qa-excerpt-note">只查通用条文可直接往下阅读；需要按项目情况核对时再填写。</p>
+        <form id="official-qa-conditions" class="official-qa-conditions" hidden>
+          <section id="official-qa-project-candidates" class="official-qa-project-candidates" hidden aria-label="确认项目条件">
+            <strong>项目资料中的明确条件</strong>
+            <p id="official-qa-project-candidate-note" class="official-qa-excerpt-note">勾选本次采用的条件；也可以在下方手填，手填值优先。</p>
+            <div id="official-qa-project-candidate-items"></div>
+          </section>
+          <div class="official-qa-condition-grid">
+            <label id="official-qa-building-use-field" class="field"><span id="official-qa-building-use-label">建筑用途</span><input id="official-qa-building-use" data-condition-key="building_use" maxlength="100" placeholder="例如：住宅、办公、汽车库或修车库" list="official-qa-building-use-choices"></label>
+            <datalist id="official-qa-building-use-choices"><option value="住宅"></option><option value="办公"></option><option value="商业"></option><option value="厂房"></option><option value="仓库"></option><option value="汽车库"></option><option value="修车库"></option><option value="未知"></option></datalist>
+            <label id="official-qa-fire-resistance-field" class="field"><span id="official-qa-fire-resistance-label">耐火等级</span><input id="official-qa-fire-resistance" data-condition-key="fire_resistance" maxlength="100" placeholder="例如：一级、二级" list="official-qa-fire-resistance-choices"></label>
+            <datalist id="official-qa-fire-resistance-choices"><option value="一级"></option><option value="二级"></option><option value="三级"></option><option value="四级"></option><option value="未知"></option></datalist>
+            <label id="official-qa-fire-context-field" class="field"><span id="official-qa-fire-context-label">地上地下及灭火情况</span><input id="official-qa-fire-context" data-condition-key="fire_context" maxlength="100" placeholder="例如：地上，设自动灭火系统"></label>
+            <label id="official-qa-garage-form-field" class="field" hidden><span id="official-qa-garage-form-label">车库形式</span><input id="official-qa-garage-form" data-condition-key="garage_form" maxlength="100" list="official-qa-garage-forms" placeholder="例如：普通封闭式；机械式需说明车道与人员"></label>
+            <datalist id="official-qa-garage-forms"><option value="普通封闭式"><option value="敞开式"><option value="错层式"><option value="斜楼板式"><option value="室内有车道且有人员停留的机械式汽车库"><option value="室内有车道但无人员停留的机械式汽车库"><option value="室内无车道但有人员停留的机械式汽车库"><option value="室内无车道且无人员停留的机械式汽车库"></datalist>
+            <label id="official-qa-garage-storage-field" class="field" hidden><span id="official-qa-garage-storage-label">停放或存放情况</span><input id="official-qa-garage-storage" data-condition-key="garage_storage" maxlength="100" list="official-qa-garage-storages" placeholder="普通车辆，或存放危险物品"></label>
+            <datalist id="official-qa-garage-storages"><option value="普通车辆"><option value="存放危险物品"><option value="甲、乙类物品运输车"></datalist>
+            <label id="official-qa-suppression-scope-field" class="field" hidden><span id="official-qa-suppression-scope-label">灭火系统覆盖范围</span><select id="official-qa-suppression-scope" data-condition-key="suppression_scope"><option value="">请选择本次防火分区的覆盖范围</option><option value="全部">全部覆盖</option><option value="局部">局部覆盖</option><option value="无">没有设置</option></select></label>
+            <label id="official-qa-public-fire-scope-field" class="field" hidden><span id="official-qa-public-fire-scope-label">公共建筑范围</span><select id="official-qa-public-fire-scope" data-condition-key="public_fire_scope"><option value="">请选择本次建筑范围</option><option value="非木结构且无特殊要求的公共建筑">非木结构且无特殊要求的公共建筑</option><option value="木结构建筑">木结构建筑</option><option value="有特殊要求的建筑">有特殊要求的建筑</option><option value="附建于民用建筑中的汽车库">附建于民用建筑中的汽车库</option></select></label>
+             <label id="official-qa-daylight-space-field" class="field" hidden><span id="official-qa-daylight-space-label">房间功能</span><input id="official-qa-daylight-space" data-condition-key="daylight_space" maxlength="100" placeholder="例如：普通办公室、阅览室"></label>
+             <label id="official-qa-daylight-mode-field" class="field" hidden><span id="official-qa-daylight-mode-label">采光方式</span><input id="official-qa-daylight-mode" data-condition-key="daylight_mode" maxlength="100" placeholder="侧面采光或顶部采光" list="official-qa-daylight-mode-choices"></label>
+            <datalist id="official-qa-daylight-mode-choices"><option value="侧面采光"></option><option value="顶部采光"></option><option value="未知"></option></datalist>
+             <label id="official-qa-daylight-region-field" class="field" hidden><span id="official-qa-daylight-region-label">地点或光气候区</span><input id="official-qa-daylight-region" data-condition-key="daylight_region" maxlength="100" placeholder="例如：武汉市，或已确认的Ⅲ类光气候区"></label>
+            <label id="official-qa-spacing-building-pair-field" class="field" hidden><span id="official-qa-spacing-building-pair-label">双方建筑用途</span><input id="official-qa-spacing-building-pair" data-condition-key="spacing_building_pair" maxlength="100" placeholder="分别说明双方用途，例如：南侧住宅、北侧办公"></label>
+            <label id="official-qa-spacing-geometry-field" class="field" hidden><span id="official-qa-spacing-geometry-label">双方高度与相对布置</span><input id="official-qa-spacing-geometry" data-condition-key="spacing_geometry" maxlength="100" placeholder="双方高度、朝向，以及平行或垂直等相对布置"></label>
+            <label id="official-qa-spacing-area-field" class="field" hidden><span id="official-qa-spacing-area-label">所在范围</span><input id="official-qa-spacing-area" data-condition-key="spacing_area" maxlength="100" placeholder="例如：已确认的新城区或旧城区；不清楚可说明"></label>
+            <!-- 固定用户条件控件：服务器登记决定补问，不从回答动态创建字段。 -->
+            <label id="official-qa-height-purpose-field" class="field" hidden><span id="official-qa-height-purpose-label">高度计量口径</span><input id="official-qa-height-purpose" data-condition-key="height_purpose" maxlength="100" placeholder="消防、规划或一般民用建筑口径；不清楚可写未知" list="official-qa-height-purpose-choices"></label>
+            <datalist id="official-qa-height-purpose-choices"><option value="消防"></option><option value="规划"></option><option value="一般民用建筑"></option><option value="未知"></option></datalist>
+            <label id="official-qa-roof-form-field" class="field" hidden><span id="official-qa-roof-form-label">屋面形式</span><input id="official-qa-roof-form" data-condition-key="roof_form" maxlength="100" placeholder="平屋顶、坡屋顶或混合屋面；不清楚可写未知" list="official-qa-roof-form-choices"></label>
+            <datalist id="official-qa-roof-form-choices"><option value="平屋顶"></option><option value="坡屋顶"></option><option value="混合屋面"></option><option value="未知"></option></datalist>
+            <label id="official-qa-height-control-scope-field" class="field" hidden><span id="official-qa-height-control-scope-label">高度控制范围</span><input id="official-qa-height-control-scope" data-condition-key="height_control_scope" maxlength="100" placeholder="说明特殊高度控制范围，或明确无特殊控制区；未知可保留" list="official-qa-height-control-scope-choices"></label>
+            <datalist id="official-qa-height-control-scope-choices"><option value="无特殊控制区"></option><option value="未知"></option></datalist>
+            <label id="official-qa-roof-equipment-description-field" class="field" hidden><span id="official-qa-roof-equipment-description-label">屋顶设备或突出用房</span><input id="official-qa-roof-equipment-description" data-condition-key="roof_equipment_description" maxlength="100" placeholder="说明屋顶设备或突出用房的实际用途；不清楚可写未知"></label>
+            <label id="official-qa-roof-equipment-area-field" class="field" hidden><span id="official-qa-roof-equipment-area-label">突出用房与屋面面积</span><input id="official-qa-roof-equipment-area" data-condition-key="roof_equipment_area" maxlength="100" placeholder="分别说明已知面积并保留单位；不清楚可写未知"></label>
+          </div>
+          <button id="official-qa-retry" class="secondary-button" type="submit">补充条件后再查</button>
+        </form>
+        </details>
+        <div id="official-qa-answer" class="official-qa-answer" aria-live="polite"></div>
+        <div id="official-qa-record"></div>
+        <details id="official-qa-condition-provenance" class="official-qa-context" hidden>
+          <summary>本次采用的项目条件（不是规范依据）</summary><div id="official-qa-condition-provenance-items"></div>
+        </details>
+        <details id="official-qa-requirements" class="official-qa-context" hidden>
+          <summary>仍需核对的原文与前提</summary><div id="official-qa-requirement-items"></div>
+        </details>
+        <details id="official-qa-context-groups" class="official-qa-context-groups" hidden>
+          <summary id="official-qa-context-group-summary">集中阅读出处（待核验）</summary><div id="official-qa-context-group-items"></div>
+        </details>
+        <details id="official-qa-context" class="official-qa-context" hidden>
+          <summary id="official-qa-context-summary">相关上下文</summary><div id="official-qa-context-items"></div>
+        </details>
+        <details id="official-qa-details" class="official-qa-details" hidden>
+          <summary>缺口与处理步骤</summary><div id="official-qa-detail-content"></div>
+        </details>
+      </section>
+      <details id="pending-online-panel" class="pending-online-panel" hidden aria-labelledby="pending-online-title">
+        <summary id="pending-online-title">官方来源与正文准备</summary>
+        <p class="pending-online-description">官方公告和正文分开显示；只有已取得并核对身份与权限的完整正文可重新检索，线索不作为规范答案。</p>
+        <div id="pending-online-results" class="result-list" aria-live="polite"></div>
+      </details>
+      </details>
+      <div id="workbench-status-bar" class="workbench-status-bar" hidden aria-label="本轮查阅状态">
+        <p id="workbench-primary-status" class="workbench-primary-status" role="status" aria-live="polite">读取正文与服务状态…</p>
+        <button id="workbench-progress-toggle" class="text-link quiet-button" type="button" aria-controls="pending-online-panel pending-reading-info" aria-expanded="false">详情</button>
+      </div>
+    </section>
+
+    <section class="workbench-reading-desk" data-workbench-section="search" aria-label="候选条文与出处阅读">
+      <section id="pending-official-links" class="official-link-fallback" hidden aria-label="官方查找入口"></section>
+      <div id="pending-workspace-host">
+      <div id="pending-evidence-workspace" class="pending-evidence-workspace">
+        <div class="pending-workspace-heading">
+          <div><strong>条文阅读</strong><small>章节目录单独归类</small></div>
+
+        </div>
+        <section id="pending-candidate-column" class="pending-candidate-column" aria-labelledby="pending-candidates-title">
+          <div class="pending-list-heading">
+            <h3 id="pending-candidates-title">检索结果</h3>
+            <small>每页 5 条 · 选择后查看全文</small>
+          </div>
+          <div id="workbench-empty-guide" class="workbench-empty-guide">
+            <h4>想查什么规范？</h4>
+            <p>输入问题或条款号，选择结果查看原文。</p>
+      <div class="pending-search-examples"><span>试一试：</span><button type="button" data-pending-query="无障碍">无障碍</button><button type="button" data-pending-query="地下车库">地下车库</button><button type="button" data-pending-query="2.2.3">第 2.2.3 条</button></div>
+
+
+          </div>
+
+          <div id="pending-search-results" class="result-list"></div>
+        </section>
+        <aside id="pending-page-reader" class="pending-page-reader" role="region" aria-label="条文阅读与原页对照">
+          <div class="reader-placeholder">
+            <h3>找到条文，也找到它的出处</h3>
+            <p>输入设计问题或条款号，选择左侧候选条文，在这里阅读全文、核对适用条件并对照原页。</p>
+            <small>01 查找候选　→　02 核对正文　→　03 对照原页</small>
+          </div>
+        </aside>
+      </div>
+      </div>
+      <section id="clause-comparison" class="clause-comparison" aria-labelledby="clause-compare-title" hidden>
+        <div class="clause-compare-heading"><div><h3 id="clause-compare-title">条文对照</h3><p>各书原文分别保留；版本、适用条件及效力关系请逐项核对。</p></div><button id="clause-compare-close" type="button" class="quiet-button">收起对照</button></div>
+        <p id="clause-compare-status" role="status" aria-live="polite"></p>
+        <div id="clause-compare-cards" class="clause-compare-cards"></div>
+      </section>
+      <dialog id="pending-reading-dialog" class="pending-reading-dialog" aria-label="条文阅读"><button id="pending-reading-close" class="quiet-button reading-dialog-back" type="button">← 返回结果</button></dialog>
+    </section>
+
+    <section class="project-space" data-workbench-section="projects" hidden aria-label="当前项目档案">
+      <aside id="project-picker" class="panel project-picker" aria-labelledby="projects-title">
+        <h2 id="projects-title">选择项目</h2>
+        <p class="section-description">先选工程，再看它的条件与任务书。查规范无需先建项目。</p>
+        <label class="field"><span>当前项目</span><select id="search-project" name="project_id" form="search-form"><option value="">请选择项目</option></select></label>
+        <details class="recent-projects-list"><summary>最近项目</summary><div id="project-list" class="card-list"><p class="empty-state">正在读取项目……</p></div></details>
+      </aside>
+      <!-- 空状态只解释尚未选择项目，不伪造项目内容或触发新建/上传。 -->
+      <section class="project-selection-empty" aria-labelledby="project-selection-title">
+        <h2 id="project-selection-title">把工程条件和资料放在一起</h2>
+        <p>选择已有项目，查看设计条件、核查清单和上传资料。</p>
+        <p>新工程可从右上角“新建项目”开始。</p>
+        <small>规范库独立保存；直接查条文不需要创建项目。</small>
+      </section>
+      <div id="project-content" class="project-content" hidden>
+        <div class="project-content-heading"><h2 id="project-current-name">当前项目</h2><p>资料与条件按项目分开保存；这里不是规范库。</p></div>
+        <nav class="project-task-navigation" aria-label="项目任务">
+          <button type="button" data-project-tab="conditions" aria-pressed="true" aria-controls="project-conditions-pane">项目条件</button>
+          <button type="button" data-project-tab="materials" aria-pressed="false" aria-controls="project-materials-pane">上传资料</button>
+        </nav>
+        <div id="project-conditions-pane" data-project-pane="conditions">
+    <section class="panel dossier-panel hidden" id="dossier-panel">
+      <div class="section-heading"><div><p class="step-label">项目总览</p><h2>项目条件与核查清单</h2></div><a class="primary-button" id="dossier-report-link" target="_blank" rel="noopener">查看完整报告 / 保存 PDF</a></div>
+      <p class="section-description">从当前项目资料整理设计要求，数值候选保留出处供确认。</p>
+      <div id="dossier-content"></div>
+      <details class="assessment-panel" data-project-fold>
+        <summary class="advanced-summary">要求与规范依据对照<small>按任务书要求逐条查候选依据，需人工核对；不自动判定合规</small></summary>
+        <div class="advanced-body">
+        <div class="section-heading"><div><p class="step-label">逐条找依据</p><h3>设计要求与规范对照</h3></div><button id="assessment-start" class="primary-button" type="button">为全部要求查找规范依据</button></div>
+        <p class="section-description">从当前资料提取的要求逐条检索，保存当次证据。候选条文须核对适用范围。</p>
+        <p id="assessment-status" class="inline-status" role="status"></p>
+        <div class="assessment-toolbar">
+          <label class="field assessment-filter"><span>历史批次</span><select id="assessment-history"><option value="">暂无历史记录</option></select></label>
+          <label class="field assessment-filter"><span>显示范围</span><select id="assessment-filter"><option value="ALL">全部要求</option><option value="GAPS">缺少正文依据</option><option value="PENDING">尚未人工处理</option><option value="NEEDS_CHECK">已标记待核查</option></select></label>
+        </div>
+        <div id="assessment-results"></div>
+        </div>
+      </details>
+    </section>
+
+
+        </div>
+        <div id="project-materials-pane" data-project-pane="materials" hidden>
+    <section class="panel materials-panel hidden" id="materials-panel" aria-labelledby="materials-title">
+      <div class="section-heading">
+        <div><p class="step-label">资料管理</p><h2 id="materials-title">项目资料</h2></div>
+        <span class="method-badge" id="material-project-name"></span>
+      </div>
+      <p class="section-description">上传任务书或设计说明，系统会自动识别资料类型并归入当前项目。普通使用者不需要维护规范库。</p>
+      <form id="material-upload-form" class="material-upload-form">
+        <label class="file-picker">
+          <span>选择 TXT、DOCX 或 PDF 文件</span>
+          <input id="material-file" name="file" type="file" accept=".txt,.docx,.pdf" required>
+        </label>
+        <button class="primary-button" id="material-upload-button" type="submit">上传并自动整理</button>
+      </form>
+      <p class="inline-status" id="material-status" role="status"></p>
+      <div id="material-list" class="material-list"><p class="empty-state">请选择一个项目后查看资料。</p></div>
+      <section class="material-recommendations hidden" id="material-recommendations" aria-labelledby="material-recommendations-title">
+        <div class="section-heading">
+          <div><p class="step-label">自动整理</p><h3 id="material-recommendations-title">资料识别结果</h3></div>
+          <button class="icon-button" id="close-material-recommendations" type="button" aria-label="关闭规范清单">×</button>
+        </div>
+        <p class="recommendation-source" id="recommendation-source"></p>
+        <p class="verification-legend"><strong>官方已核验</strong>表示题录和官方公告核对过；它与“正文已入库”是两件不同的事。</p>
+        <div class="topic-list" id="material-topic-list"></div>
+        <p class="recommendation-notice" id="recommendation-notice"></p>
+        <div class="recommendation-list" id="material-recommendation-list"></div>
+      </section>
+    </section>
+
+
+        </div>
+        <details id="project-advanced-tools" class="panel project-advanced-tools" data-project-fold>
+          <summary class="advanced-summary">更多项目工具<small>人工资料库检索、可选模型分析与历史审查</small></summary>
+      <details class="panel search-panel" aria-labelledby="search-title">
+        <summary class="advanced-summary">人工资料库检索（高级）<small>与首页的官方待核验正文分开，不混用结果</small></summary>
+        <div class="advanced-body">
+        <div class="section-heading">
+          <div><p class="step-label">人工维护的资料</p><h2 id="search-title">人工资料库检索</h2></div>
+          <span class="method-badge">关键词检索</span>
+        </div>
+        <p class="section-description">用日常工作语言描述问题，不需要先知道规范编号。本次检索将参考所选项目条件和项目资料。</p>
+        <form id="search-form">
+          <label class="field"><span>专业范围</span>
+            <select name="specialty"><option value="建筑">建筑</option><option value="消防">消防</option><option value="无障碍">无障碍</option><option value="其他">其他</option></select>
+          </label>
+          <label class="field field-wide"><span>要查什么 *</span><textarea name="query" required maxlength="500" rows="4" placeholder="例如：办公建筑主要出入口的无障碍设计有什么要求？"></textarea></label>
+          <div class="query-examples field-wide" aria-label="查询示例">
+            <span>可以这样问：</span>
+            <button type="button">高层办公建筑疏散楼梯要求</button>
+            <button type="button">无障碍入口坡道要求</button>
+          </div>
+          <button class="primary-button field-wide" id="search-button" type="submit">开始查找相关条文</button>
+        </form>
+        <p class="inline-status" id="search-status" role="status"></p>
+        </div>
+      </details>
+
+    <details class="panel agent-feature-wrapper" data-project-fold>
+      <summary class="advanced-summary">AI 辅助分析（可选）<small>需配置模型；不会随查询自动发送资料</small></summary>
+    <section class="agent-panel hidden" id="agent-panel" aria-labelledby="agent-title">
+      <div class="section-heading">
+        <div><p class="step-label">证据型 Agent</p><h2 id="agent-title">AI 辅助分析</h2></div>
+        <span class="method-badge" id="agent-provider-state">正在检查配置</span>
+      </div>
+      <p class="section-description">让 AI 根据当前项目主动读取项目信息、检索规范正文，再形成带出处的审查草稿。结果不替代专业判断，仍需人工逐条确认。</p>
+      <div class="agent-configuration" id="agent-configuration" role="status">正在检查服务端 DeepSeek API Key 配置；密钥不会进入浏览器。</div>
+      <form id="agent-form" class="agent-form">
+        <label class="field"><span>希望 AI 分析什么 *</span><textarea id="agent-goal" name="goal" required maxlength="500" rows="4" placeholder="例如：结合当前项目信息，检查防火疏散方面可能存在的风险，并给出规范出处。"></textarea></label>
+        <label class="consent-card">
+          <input id="agent-material-consent" name="include_project_materials" type="checkbox">
+          <span><strong>允许发送项目资料摘录</strong><small id="agent-material-limit">仅发送完成任务所需的有限文字，不发送原文件；请先确认资料可以发送给 DeepSeek。</small></span>
+        </label>
+        <div class="agent-actions">
+          <p class="inline-status" id="agent-status" role="status">请先在“我的项目”中选择一个项目。</p>
+          <button class="primary-button" id="agent-start-button" type="submit" disabled>发送给 DeepSeek 并开始分析</button>
+        </div>
+      </form>
+      <div class="agent-output hidden" id="agent-output" aria-live="polite"></div>
+      <section class="agent-history" aria-labelledby="agent-history-title">
+        <div class="section-heading"><div><p class="step-label">分析留痕</p><h3 id="agent-history-title">最近运行记录</h3></div></div>
+        <div id="agent-history-list"><p class="empty-state">选择项目后显示该项目的运行记录。</p></div>
+      </section>
+    </section>
+    </details>
+
+
+    <section class="panel results-panel hidden" id="results-panel" aria-labelledby="results-title">
+      <div class="section-heading">
+        <div><p class="step-label">检索结果</p><h2 id="results-title">已核验正文条文</h2></div>
+        <span class="result-count" id="result-count"></span>
+      </div>
+      <p class="context-note" id="query-context"></p>
+      <div class="factor-area hidden" id="factor-area">
+        <strong>本次检索将参考</strong>
+        <div class="factor-list" id="factor-list"></div>
+      </div>
+      <div id="result-list" class="result-list"></div>
+      <section class="catalog-section hidden" id="catalog-section" aria-labelledby="catalog-title">
+        <div class="section-heading"><div><p class="step-label">可能相关</p><h3 id="catalog-title">规范目录提示</h3></div></div>
+        <p class="section-description">这里仅列出可能相关的规范名称。目录提示不能代替条文原文，没有正文时不会生成或猜测条文。</p>
+        <div id="catalog-list" class="catalog-list"></div>
+      </section>
+    </section>
+
+
+    <details class="panel review-feature-wrapper" data-project-fold>
+      <summary class="advanced-summary">全部项目的历史资料审查<small>全局旧记录，不是当前项目的查询结论</small></summary>
+    <section class="reviews-panel" aria-labelledby="reviews-title">
+      <div class="section-heading">
+        <div><p class="step-label">审查留痕</p><h2 id="reviews-title">最近审查</h2></div>
+        <a class="text-link" href="/evaluation-center.html">发起资料审查</a>
+      </div>
+      <div id="review-list" class="review-list"><p class="empty-state">正在读取审查记录……</p></div>
+    </section>
+    </details>
+
+        </details>
+      </div>
+    </section>
+
+    <details id="workspace-backup" class="panel workspace-backup" data-workbench-section="projects" hidden>
+      <summary>查阅备份与导入</summary>
+      <p class="workspace-backup-note">导出当前项目的收藏、个人笔记、手填条件方案和问题清单。规范原件、后台任务和密钥不在此备份中；换设备后需使用同一项目和对应资料。</p>
+      <button id="workspace-backup-export" type="button" class="secondary-button">导出当前项目查阅备份</button>
+      <label class="field workspace-backup-file"><span>选择查阅备份文件</span><input id="workspace-backup-file" type="file" accept=".json,application/json"></label>
+      <p class="workspace-backup-note">先预览再合并；同名方案、同一问题及同一固定收藏保留本机版本。导入记录中的状态只作历史参考，打开时重新核对任务与权限。</p>
+      <button id="workspace-backup-apply" type="button" class="secondary-button" disabled>合并导入并刷新</button>
+      <button id="workspace-backup-reload" type="button" class="quiet-button" hidden>刷新读取导入内容</button>
+      <p id="workspace-backup-status" role="status" aria-live="polite"></p>
+      <label id="workspace-backup-preview" class="field workspace-backup-preview" hidden><span>备份内容（JSON，可手动保存）</span><textarea id="workspace-backup-text" readonly rows="8"></textarea></label>
+    </details>
+
+    <section id="library-inventory-panel" class="panel library-inventory-panel" data-workbench-section="library" hidden aria-labelledby="library-inventory-title">
+      <div class="section-heading"><div><h2 id="library-inventory-title">已登记的官方资料</h2><p class="section-description">这是共享规范库，不随项目切换。正文取得与识别完成，仍不等于现行或适用。</p></div><button id="library-inventory-refresh" class="secondary-button" type="button">刷新清单</button></div>
+      <p id="library-inventory-summary" class="library-inventory-summary"></p>
+      <p id="library-inventory-status" class="inline-status" role="status">进入规范库后读取本机清单，不联网下载。</p>
+      <div class="library-metadata-toolbar"><button id="library-metadata-load" class="quiet-button" type="button">读取地域与版本档案</button><span>按需读取本机已有档案；类别线索不代表现行或适用。</span></div>
+      <div class="library-filter-toolbar">
+        <label class="field library-filter-field"><span>筛选名称或编号</span><input id="library-filter" name="library_filter" type="search" autocomplete="off" placeholder="例如：宜昌、车库或 GB55031" aria-describedby="library-filter-count"></label>
+        <label class="field"><span>来源类别</span><select id="library-level" disabled><option value="">全部类别</option><option value="NATIONAL">国家线索</option><option value="INDUSTRY">行业线索</option><option value="LOCAL">地方线索</option><option value="UNKNOWN">其他或待核</option></select></label>
+        <label class="field"><span>档案地域文字</span><input id="library-region" type="search" maxlength="80" placeholder="如：厦门、宜昌" disabled></label>
+        <button id="library-filter-clear" class="quiet-button" type="button" hidden>清除筛选</button>
+        <span id="library-filter-count" class="library-filter-count" role="status" aria-live="polite"></span>
+      </div>
+      <div class="library-metadata-toolbar"><button id="library-scope-apply" class="secondary-button" type="button" disabled>使用筛选范围</button><span id="library-scope-note" role="status" aria-live="polite">选择范围后再主动提交问题。</span></div>
+      <p id="library-filter-empty" class="empty-state" hidden></p>
+      <div id="library-inventory-list" class="library-inventory-list"></div>
+      <p class="source-warning">此清单不是全国规范全集；各地正文是否已取得，以当前清单中的单份资料状态为准。未取得正文不等于没有规范要求，编号年份不证明现行性。</p>
+    </section>
+    <details id="library-acquisition-tools" class="panel library-tools" data-workbench-section="library" hidden>
+      <summary class="advanced-summary">补充官方资料<small>需要找更多正文时再展开；提交查询才会联网</small></summary>
+    <section class="panel official-discovery-panel" aria-labelledby="official-discovery-title">
+      <p id="governance-status" class="source-warning" role="status">正在读取来源核验状态；登记不等于核验通过。</p>
+      <div class="section-heading"><div><p class="step-label">补充资料 · 官方来源</p><h2 id="official-discovery-title">查找官方来源与准备正文</h2></div><span class="method-badge">公告线索，不是条文答案</span></div>
+        <p class="section-description">输入问题、规范名或编号。国家、行业规范从住建部公告找附件；宜昌单独查已登记的地方发布页与附件，正文、补充细则分别准备。</p>
+      <form id="official-discovery-form" class="official-discovery-form">
+        <label class="field"><span>问题、规范名称或编号</span><input id="official-query" maxlength="500" placeholder="例如：办公楼地下车库防火，或 建筑防火通用规范"></label>
+        <div class="official-options">
+          <label><input id="official-use-project" type="checkbox">结合已选项目的资料主题（在“我的项目”选择）</label>
+          <label><input id="official-refresh" type="checkbox">重新联网并重新准备正文（可能再次下载）</label>
+        </div>
+        <button id="official-discovery-button" class="primary-button" type="submit">查找规范并自动准备正文</button>
+      </form>
+      <p class="source-warning">找到公告或页面不等于取得规范正文；地方正文的准备状态以当前清单为准。只发送公共词，不发送任务书全文，不调用模型。</p>
+      <p id="official-discovery-status" class="inline-status" role="status"></p>
+      <div id="official-discovery-results" class="result-list" aria-live="polite"></div>
+    </section>
+
+
+    </details>
+    <details id="library-advanced-maintenance" class="panel library-tools" data-workbench-section="library" hidden>
+      <summary class="advanced-summary">高级维护<small>处理记录、来源登记、固定题库搜索检查；日常查条文不需要操作</small></summary>
+      <details id="official-quality-panel" class="official-quality-panel panel">
+        <summary>正文覆盖与搜索检查</summary>
+        <p class="section-description">先看哪些正文已准备，再看固定问题能否找到正确出处。只检查本机缓存，不联网、不重新识别，也不代表规范齐全。</p>
+        <div class="official-quality-actions">
+          <button id="official-quality-refresh" type="button" class="secondary-button">刷新覆盖与记录</button>
+          <button id="official-quality-run" type="button" class="secondary-button" disabled>运行固定题库检查</button>
+        </div>
+        <p id="official-quality-status" class="inline-status" role="status"></p>
+        <ul id="official-quality-coverage" class="official-quality-coverage"></ul>
+        <div id="official-quality-metrics" aria-live="polite"></div>
+        <p><a class="text-link" href="/standard-catalog-admin.html">打开规范库维护页面（高级）</a></p>
+      </details>
+
+
+    </details>
+
+  </main>
+
+  <template id="project-card-template">
+    <button class="project-card" type="button">
+      <span class="project-name"></span><span class="project-meta"></span><span class="project-status"></span>
+    </button>
+  </template>
+
+  <template id="result-card-template">
+    <article class="result-card">
+      <div class="result-topline"><span class="standard-name"></span><span class="source-state"></span></div>
+      <h3 class="clause-title"></h3><p class="clause-path"></p><p class="clause-text"></p>
+      <div class="result-footer"><span class="page-number"></span><a class="source-link" target="_blank" rel="noopener noreferrer">查看来源</a></div>
+      <p class="source-warning"></p>
+    </article>
+  </template>
+
+  <template id="material-card-template">
+    <article class="material-card">
+      <div><h3 class="material-name"></h3><p class="material-reason"></p></div>
+      <div class="material-controls">
+        <span class="material-state"></span>
+        <select class="material-type" aria-label="资料类型">
+          <option value="PROJECT_REQUIREMENT">项目要求</option>
+          <option value="SCHEME_DESCRIPTION">方案说明</option>
+          <option value="PRELIMINARY_DESCRIPTION">初步设计说明</option>
+          <option value="DESIGN_DESCRIPTION">施工图设计说明</option>
+          <option value="OTHER">其他资料</option>
+        </select>
+        <button class="secondary-button confirm-material" type="button">确认类型</button>
+        <button class="secondary-button reprocess-material hidden" type="button">重新解析</button>
+        <button class="secondary-button recommend-standards" type="button">自动生成规范清单</button>
+        <button class="primary-button start-review" type="button">一键审查</button>
+      </div>
+    </article>
+  </template>
+
+  <template id="catalog-card-template">
+    <article class="catalog-card">
+      <div><strong class="catalog-code"></strong><h4 class="catalog-name"></h4><p class="catalog-reason"></p></div>
+      <a class="source-link catalog-link" target="_blank" rel="noopener noreferrer">查看官方页面</a>
+    </article>
+  </template>
+
+  <template id="recommendation-card-template">
+    <article class="recommendation-card">
+      <div class="recommendation-card-main">
+        <div class="recommendation-topline"><strong class="recommendation-code"></strong><span class="recommendation-availability"></span></div>
+        <h4 class="recommendation-name"></h4>
+        <p class="recommendation-reason"></p>
+      </div>
+      <a class="source-link recommendation-link" target="_blank" rel="noopener noreferrer">到官方页面核对</a>
+    </article>
+  </template>
+
+  <!-- 先切换可见区域，再由原有业务脚本聚焦或滚动，避免对隐藏面板执行操作。 -->
+  <script src="/assets/http-response.js?v=ce02463d9cfd" defer></script>
+  <script src="/assets/workbench-presentation.js?v=15ea6c0058dc" defer></script>
+  <script src="/assets/admission-presentation.js?v=78971dd24146" defer></script>
+  <script src="/assets/project-workbench.js?v=eb252945c84e" defer></script>
+  <script src="/assets/requirement-assessment.js?v=31ea98137d0b" defer></script>
+  <script src="/assets/pending-result-presentation.js?v=06301d32a3a9" defer></script>
+  <script src="/assets/source-metadata.js?v=a990ff8fff22" defer></script>
+  <script src="/assets/table-reading.js?v=30c24f802d68" defer></script>
+  <script src="/assets/official-source-inventory.js?v=e74a397d2df1" defer></script>
+  <script src="/assets/source-scope.js?v=f3eb7a291e51" defer></script>
+  <script src="/assets/notice-change-reader.js?v=4a45c67fe9f0" defer></script>
+  <script src="/assets/reading-trail.js?v=969de04df675" defer></script>
+  <script src="/assets/reader-context.js?v=d120c477a375" defer></script>
+  <script src="/assets/standard-mentions.js?v=fc8a04434987" defer></script>
+  <script src="/assets/book-pages.js?v=9b8e4a7679f1" defer></script>
+  <script src="/assets/book-index.js?v=f606bb8e7e0c" defer></script>
+  <script src="/assets/citation-copy.js?v=8ffecabf7f88" defer></script>
+  <script src="/assets/clause-comparison.js?v=7b3ad62f6e2e" defer></script>
+  <script src="/assets/clause-bookmarks.js?v=baee992d1ddd" defer></script>
+  <script src="/assets/pending-standard-search.js?v=b0eb0a2688af" defer></script>
+  <script src="/assets/answer-brief.js?v=82bb85cb345d" defer></script>
+  <script src="/assets/page-readings.js?v=ff31f71fef28" defer></script>
+  <script src="/assets/relation-proofs.js?v=43953693f6cf" defer></script>
+  <script src="/assets/task-reading-positions.js?v=a76b99638463" defer></script>
+  <script src="/assets/condition-presets.js?v=2bab2de13413" defer></script>
+  <script src="/assets/question-worklist.js?v=59ef103fe845" defer></script>
+  <script src="/assets/qa-reading-record.js?v=ca0cc3c77582" defer></script>
+  <script src="/assets/official-qa.js?v=2f4142627ac0" defer></script>
+  <script src="/assets/qa-history.js?v=fd235107bb70" defer></script>
+  <script src="/assets/workspace-backup.js?v=7782e6aa88ee" defer></script>
+  <script src="/assets/library-inventory.js?v=e1b139018dc5" defer></script>
+  <script src="/assets/official-quality.js?v=b1cf8d420492" defer></script>
+  <script src="/assets/original-reader.js?v=e9e7bf708b58" defer></script>
+  <script src="/assets/official-acquisition.js?v=c9674d37dc26" defer></script>
+  <script src="/assets/official-discovery.js?v=5b4847e38713" defer></script>
+  <script src="/assets/official-query-flow.js?v=46c8fda5f307" defer></script>
+  <script src="/assets/workbench-ui.js?v=1f2ce9f0e226" defer></script>
+</body>
+</html>

@@ -1,0 +1,27 @@
+:root { --ink:#17202a; --muted:#667085; --line:#dfe4e8; --green:#196b53; --green-dark:#0f513f; --soft:#e8f4ef; --amber:#9a5b12; --canvas:#f3f5f4; }
+* { box-sizing: border-box; }
+body { margin:0; background:var(--canvas); color:var(--ink); font-family:"Microsoft YaHei","PingFang SC",Arial,sans-serif; }
+.page-width { width:min(1050px,calc(100% - 32px)); margin:0 auto; }
+.topbar { background:#123f34; color:white; padding:26px 0; }
+.topbar-inner,.panel-heading { display:flex; align-items:center; justify-content:space-between; gap:18px; }
+.topbar h1 { margin:3px 0 0; font-size:28px; }
+.topbar a { color:white; text-decoration:none; font-weight:700; }
+.eyebrow { margin:0; font-size:11px; letter-spacing:.12em; font-weight:800; color:#87baa8; }
+main { padding:30px 0 50px; }
+.notice,.panel { background:white; border:1px solid var(--line); border-radius:16px; padding:22px; margin-bottom:18px; }
+.notice { border-left:5px solid var(--green); }
+.notice p,.panel > p { color:var(--muted); line-height:1.7; margin-bottom:0; }
+.status-grid { display:grid; grid-template-columns:repeat(4,1fr); gap:12px; margin-bottom:18px; }
+.status-grid article { background:white; border:1px solid var(--line); border-radius:14px; padding:20px; }
+.status-grid span { color:var(--muted); font-size:13px; display:block; }
+.status-grid strong { display:block; margin-top:9px; font-size:30px; color:var(--green-dark); }
+.panel h2 { margin:4px 0 0; font-size:21px; }
+button { border:0; border-radius:10px; padding:13px 18px; background:var(--green); color:white; font:inherit; font-weight:700; cursor:pointer; }
+button:disabled { opacity:.65; cursor:wait; }
+.status-message { min-height:20px; color:var(--amber) !important; }
+.history-item { display:grid; grid-template-columns:1fr auto; gap:7px 18px; border-top:1px solid var(--line); padding:15px 0; }
+.history-item:first-child { border-top:0; }
+.history-item strong { color:var(--green-dark); }
+.history-item span,.history-item p,.empty { color:var(--muted); font-size:13px; margin:0; }
+.history-item p { grid-column:1 / -1; }
+@media(max-width:700px){ .status-grid{grid-template-columns:repeat(2,1fr)} .topbar-inner,.panel-heading{align-items:flex-start;flex-direction:column} }
