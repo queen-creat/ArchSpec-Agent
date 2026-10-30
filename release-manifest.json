@@ -68,7 +68,7 @@
     "src/archspec/local_setup.py": "ada6226e807166bab3dfaf4f4bf81b417a4c8bff0270790dca777af9868381a8",
     "src/archspec/main.py": "3b5fa6170d9ddb5464747cdeac324a3833ce5ab31bf2b37f6803d4ee57fd5bb8",
     "src/archspec/official_discovery/__init__.py": "2aca386b18b5a0379058f6690a923ef7b35a3bc644ad9756a5b2b7e620c4b590",
-    "src/archspec/official_discovery/free_search.py": "be4c13b79df45dcbf9354decdb8d9a5c186926c72e17a329eaed66d171ffacea",
+    "src/archspec/official_discovery/free_search.py": "329f7e6bc9e75c1fc54901ae772d8e65a961631516532a498413652e2e8b8c1c",
     "src/archspec/official_discovery/government_copies.py": "61c91ae602c7567915fd0eb4722912c25df2495f226863de33b96f3da1764c80",
     "src/archspec/official_discovery/local_sources.py": "04853f954cbb31f1bcf20e7d80d10aaa948995b2b1cd8e06175b194e05950a2c",
     "src/archspec/official_discovery/plan.py": "4df06c8da01c7566d94974a37a34a9e48e36f283d9827fe7bef4f3d5cd8f55e9",
