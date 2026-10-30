@@ -273,7 +273,11 @@ class OfficialQueryFlow:
             active_titles = [title for title in public_titles if ("TITLE", title) in discovery.targets]
             if active_titles:
                 missing = missing_public_titles(result.get("coverage"), active_titles)
-                found["lookup"]["suggested_source_gaps"] = list(missing)
+                # A readable suggested book cannot cancel complementary raw-topic
+                # discovery. Only a hint-only plan may stop on an empty hint gap.
+                complementary = any(term not in active_titles for term, _reason in discovery.queries)
+                if missing or not complementary:
+                    found["lookup"]["suggested_source_gaps"] = list(missing)
         return found
 
     def execute(self, flow_id):

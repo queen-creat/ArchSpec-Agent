@@ -412,8 +412,10 @@
     if (!isCurrent()) return;
     const decision = checkedNetwork(localResult);
     let publicTitleHints=[];
-    if(['SCOPE_REVIEW_REQUIRED','CACHE_MATCHED'].includes(decision?.reason)
-        && localResult?.lookup?.public_plan?.route==='PUBLIC_WORDS_NOT_IDENTIFIED'
+    const hintPlan=localResult?.lookup?.public_plan;
+    if(['SCOPE_REVIEW_REQUIRED','CACHE_MATCHED','LOCAL_GAP','CANDIDATE_UNCONFIRMED','UNVERIFIED'].includes(decision?.reason)
+        && (hintPlan?.route==='PUBLIC_WORDS_NOT_IDENTIFIED'
+          ||hintPlan?.route==='MOHURD' && hintPlan.region===null)
         && !context.restored && context.publicTitlesReady?.then) {
       status.textContent="正在核对本轮理解建议的公开规范名称……";
       try {

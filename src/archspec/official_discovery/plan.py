@@ -340,18 +340,21 @@ def _build_discovery_plan(query, topics=(), *, region=None, public_titles=()):
         return DiscoveryPlan("UNSUPPORTED_LOCAL", region,
                              tuple(("LOCAL_TOPIC", title) for title in targets),
                              tuple((item["term"], item["reason"]) for item in queries), omitted)
-    hinted = False
+    hinted = bool(public_titles and not extract_public_codes(query) and not extract_public_titles(query))
     directory_fallback = False
-    if public_titles:
-        try:
-            plan_queries(query, ())
-        except ValueError:
-            # 只填原问的公共词缺口；不能让项目“办公”等宽主题盖掉具体补查书名。
-            hinted = True
     if hinted:
         queries = [{"term": title, "reason": "已核公开目录的候选书名；不是用户选书或规范依据"}
                    for title in public_titles]
-        omitted = 0
+        # Keep raw-query public topics as complementary clues, while project-only
+        # labels cannot displace or widen a specific registered book suggestion.
+        try:
+            fallback, omitted = plan_queries(query, ())
+        except ValueError:
+            fallback, omitted = [], 0
+        seen = {item["term"] for item in queries}
+        combined = [*queries, *(item for item in fallback if item["term"] not in seen)]
+        omitted += max(0, len(combined) - 3)
+        queries = combined[:3]
     else:
         try:
             queries, omitted = plan_queries(query, topics)
