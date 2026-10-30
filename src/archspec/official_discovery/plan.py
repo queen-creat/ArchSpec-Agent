@@ -264,16 +264,20 @@ def _general_reference_candidates(query):
     """仅用已有明确原字查阅结构补固定公共候选，不从原问外发私有词。"""
     if "《" in query or "》" in query:
         return ()  # 未登记书目不能被默认通用规范悄悄代替。
+    from archspec.official_discovery.public_scope_catalog import (
+        PUBLIC_SECTION_CANDIDATES,
+        section_subjects,
+    )
+    # No directory object means no candidate; do not invoke another planner for
+    # unrelated established topics (e.g. garage fire compartments).
+    if not any(term in query for _title, headings, _url, _sha, _pages in PUBLIC_SECTION_CANDIDATES
+               for term in section_subjects(headings)):
+        return ()
     from archspec.official_qa.question_plan import LocalPlanner
 
     proposal = LocalPlanner().propose(query, {})
     if (proposal["topic"] == "UNKNOWN" and proposal["understanding"] == "CLEAR"
             and proposal["operation"] == "REFERENCE_LOOKUP" and proposal.get("query_focus")):
-        from archspec.official_discovery.public_scope_catalog import (
-            PUBLIC_SECTION_CANDIDATES,
-            section_subjects,
-        )
-
         subjects = proposal["query_focus"]["subjects"]
         candidates, seen = [], set()
         for title, headings, _url, _sha, _pages in PUBLIC_SECTION_CANDIDATES:
@@ -337,6 +341,7 @@ def _build_discovery_plan(query, topics=(), *, region=None, public_titles=()):
                              tuple(("LOCAL_TOPIC", title) for title in targets),
                              tuple((item["term"], item["reason"]) for item in queries), omitted)
     hinted = False
+    directory_fallback = False
     if public_titles:
         try:
             plan_queries(query, ())
@@ -355,6 +360,16 @@ def _build_discovery_plan(query, topics=(), *, region=None, public_titles=()):
             if not candidates:
                 raise
             queries, omitted = list(candidates[:3]), max(0, len(candidates) - 3)
+            directory_fallback = True
+    # Specialist topics and verified directory scopes are complementary discovery clues.
+    # Preserve explicit books/codes and model handoff; never expand the three-query cap.
+    if (not directory_fallback and not extract_public_codes(query)
+            and not extract_public_titles(query) and not public_titles):
+        seen = {item["term"] for item in queries}
+        additions = [item for item in _general_reference_candidates(query) if item["term"] not in seen]
+        combined = [*queries, *additions]
+        omitted += max(0, len(combined) - 3)
+        queries = combined[:3]
     codes = extract_public_codes(query)
     if codes:
         targets = _explicit_reference_targets(query)
