@@ -290,6 +290,35 @@ def _literal_reference_focus(query):
     return {"subjects": [subject], "attributes": [attribute], "actions": []}
 
 
+def _literal_indexed_reference_focus(query):
+    """单一公开目录对象+原字属性的省略结构；范围与疑问操作不猜。"""
+    if "的" in query or re.search(r"[《》和与及或、]|多少|多大|计算|是否|能否|可以|允许|不得|不应|不能", query):
+        return None
+    match = re.fullmatch(
+        r"(?:请问|请查|帮我查|帮我找)?(?P<phrase>[^，,。；;？！?]{4,96}?)"
+        r"(?:(?:怎么|如何)(?:要求|规定)|(?:有哪些|有何|有什么)(?:要求|规定)|"
+        r"(?:要求|规定|原文|出处)(?:是什么|有哪些|在哪里|在哪)?)"
+        r"[？?。]?", re.sub(r"\s+", "", query))
+    if match is None:
+        return None
+    from archspec.official_discovery.public_scope_catalog import public_section_subjects
+    from archspec.official_documents.reference_relevance import COMMON
+
+    phrase = match["phrase"]
+    anchors = [(subject, found.start(), found.end()) for subject in public_section_subjects()
+               for found in re.finditer(re.escape(subject), phrase)]
+    if len(anchors) != 1:
+        return None
+    subject, start, end = anchors[0]
+    prefix, attribute = phrase[:start], phrase[end:]
+    # 未分清的复合对象仍保留原流程；这里只承接已有内/外空间修饰结构。
+    if prefix and (len(prefix) > 32 or not prefix.endswith(("内", "外"))):
+        return None
+    if not 2 <= len(attribute) <= 32 or attribute in COMMON:
+        return None
+    return {"subjects": [subject], "attributes": [attribute], "actions": []}
+
+
 def _literal_measurement_focus(query):
     """单对象明确量法可本地理解；只绑定原问连续原字，不推导尺寸、数字或同义词。"""
     compact = re.sub(r"\s+", "", query)
@@ -335,7 +364,7 @@ class LocalPlanner:
         if literal is not None:
             operation = "MEASUREMENT_METHOD"
         elif topic == "UNKNOWN" and allow_reference_focus:
-            literal = _literal_reference_focus(query)
+            literal = _literal_reference_focus(query) or _literal_indexed_reference_focus(query)
         return ModelSemanticProposal(topic=topic, operation=operation, focus=focus,
             understanding="UNCERTAIN" if topic == "UNKNOWN" and literal is None else "CLEAR",
             query_focus=QueryFocusProposal.model_validate(literal) if literal is not None else None).model_dump(

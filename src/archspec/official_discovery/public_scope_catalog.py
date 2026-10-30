@@ -7,3 +7,9 @@ PUBLIC_SECTION_CANDIDATES = (
      'https://www.mohurd.gov.cn/gongkai/zc/wjk/art/2022/art_17339_767703.html',
      '0c792fac5b2524f0326dcb750d89ed90c23cd2768f49dcbdfbd3679ca911bf8e', (14,)),
 )
+
+
+def public_section_subjects():
+    """仅由已核章节名拆出目录对象，不从问题、候选正文或模型增补词表。"""
+    return tuple(dict.fromkeys(subject for _title, headings, _url, _sha, _pages in PUBLIC_SECTION_CANDIDATES
+                               for heading in headings for subject in heading.split('、')))
