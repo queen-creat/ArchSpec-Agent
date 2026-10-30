@@ -260,24 +260,30 @@ def _target_region(query):
 
 
 
-def _general_reference_candidate(query):
+def _general_reference_candidates(query):
     """仅用已有明确原字查阅结构补固定公共候选，不从原问外发私有词。"""
     if "《" in query or "》" in query:
-        return None  # 未登记书目不能被默认通用规范悄悄代替。
+        return ()  # 未登记书目不能被默认通用规范悄悄代替。
     from archspec.official_qa.question_plan import LocalPlanner
 
     proposal = LocalPlanner().propose(query, {})
     if (proposal["topic"] == "UNKNOWN" and proposal["understanding"] == "CLEAR"
             and proposal["operation"] == "REFERENCE_LOOKUP" and proposal.get("query_focus")):
-        from archspec.official_discovery.public_scope_catalog import PUBLIC_SECTION_CANDIDATES
+        from archspec.official_discovery.public_scope_catalog import (
+            PUBLIC_SECTION_CANDIDATES,
+            section_subjects,
+        )
 
         subjects = proposal["query_focus"]["subjects"]
+        candidates, seen = [], set()
         for title, headings, _url, _sha, _pages in PUBLIC_SECTION_CANDIDATES:
-            if any(term in subject for heading in headings for term in heading.split("、")
-                   for subject in subjects):
-                return {"term": title,
-                        "reason": "对象对应已核公开章节的候选书目；不是选书、适用性或正文证明"}
-    return None
+            if title not in seen and any(term in subject for term in section_subjects(headings)
+                                         for subject in subjects):
+                seen.add(title)
+                candidates.append({"term": title,
+                                   "reason": "对象对应已核公开章节的候选书目；不是选书、适用性或正文证明"})
+        return tuple(candidates)
+    return ()
 
 
 def _build_discovery_plan(query, topics=(), *, region=None, public_titles=()):
@@ -345,10 +351,10 @@ def _build_discovery_plan(query, topics=(), *, region=None, public_titles=()):
         try:
             queries, omitted = plan_queries(query, topics)
         except ValueError:
-            candidate = _general_reference_candidate(query)
-            if candidate is None:
+            candidates = _general_reference_candidates(query)
+            if not candidates:
                 raise
-            queries, omitted = [candidate], 0
+            queries, omitted = list(candidates[:3]), max(0, len(candidates) - 3)
     codes = extract_public_codes(query)
     if codes:
         targets = _explicit_reference_targets(query)

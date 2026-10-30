@@ -307,6 +307,10 @@ def _literal_indexed_reference_focus(query):
     phrase = match["phrase"]
     anchors = [(subject, found.start(), found.end()) for subject in public_section_subjects()
                for found in re.finditer(re.escape(subject), phrase)]
+    # 目录有父子名称时保留原问中最长连续名称；不把两个独立对象合成一个。
+    anchors = [(subject, start, end) for subject, start, end in anchors
+               if not any(left <= start and end <= right and right - left > end - start
+                          for _other, left, right in anchors)]
     if len(anchors) != 1:
         return None
     subject, start, end = anchors[0]
