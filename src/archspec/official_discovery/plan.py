@@ -338,7 +338,19 @@ def build_discovery_plan(query, topics=(), *, region=None, public_titles=()):
     """所有消费者共享原问年版；公开词仍有界，原问题不会进入搜索请求。"""
     plan = _build_discovery_plan(query, topics, region=region, public_titles=public_titles)
     content = requested_content(query.strip())
-    spans = _edition_spans(content)
+    spans = []
+    for start, end, targets in _edition_spans(content):
+        bound = []
+        for kind, value in targets:
+            # 同一公共题名在地方路线可有城市前缀或LOCAL_TOPIC角色；
+            # 仅映射到本次已选的唯一同字题名，不新增来源/地区或猜多书对应。
+            aliases = tuple(target for target in plan.targets
+                            if kind == "TITLE" and target[0] in {"TITLE", "LOCAL_TOPIC"}
+                            and target[1].endswith(value))
+            exact = tuple(target for target in aliases if target[1] == value)
+            aliases = exact or aliases
+            bound.append(aliases[0] if len(aliases) == 1 else (kind, value))
+        spans.append((start, end, tuple(dict.fromkeys(bound))))
     # 审核地方题名自身可能含年版；完整登记原字仍走既有题名身份合同。
     spans.extend((match.start(), match.end(), ((kind, value),))
                  for kind, value in plan.targets if kind in {"TITLE", "LOCAL_TOPIC"}
