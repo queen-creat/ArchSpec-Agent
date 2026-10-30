@@ -153,6 +153,56 @@ def _exclude_repeated_cover_titles(pages, sizes):
         run = [candidate] if candidate is not None else []
 
 
+def _exclude_repeated_publisher_bands(pages, sizes):
+    """连续同位且独立的出版标识才退出派生正文；不按城市/整页词串删原文。"""
+    publisher = re.compile(r"[\u4e00-\u9fff]{2,30}(?:政府|委员会|部|厅|局|院)"
+                           r"(?:规章|公报|发布|印发|编印|出版)")
+    groups = {}
+    for page, (width, height) in zip(pages, sizes, strict=True):
+        bounded = _bounded_rows(page, width, height)
+        if bounded is None:
+            continue
+        rows, boxes = bounded
+        found = {"HEADER": [], "FOOTER": []}
+        for index, row in rows:
+            text, box = row["text"].strip(), boxes[index]
+            if (row.get("origin") != "TEXT" or not publisher.fullmatch(text)
+                    or re.search(r"应|须|不|可|按|根据|依据|^本|^由|^经|^注|^第|^表|^图|^附", text)):
+                continue
+            edge = ("HEADER" if box[3] <= height * .12 else
+                    "FOOTER" if box[1] >= height * .88 else None)
+            if edge is None:
+                continue
+            others = [value for other, value in boxes.items() if other != index]
+            if not others:
+                continue
+            gap = (min(value[1] for value in others) - box[3] if edge == "HEADER"
+                   else box[1] - max(value[3] for value in others))
+            # 与正文或同一表行重叠时不排除，不能把重复表头/说明当出版页边。
+            if gap < max(6, box[3] - box[1]):
+                continue
+            found[edge].append({"page": page, "index": index, "text": text,
+                "x": (box[0] + box[2]) / (2 * width), "y": box[1] / height,
+                "width": (box[2] - box[0]) / width, "height": (box[3] - box[1]) / height})
+        for edge, candidates in found.items():
+            if len(candidates) == 1:
+                item = candidates[0]
+                groups.setdefault((edge, item["text"]), []).append(item)
+    for candidates in groups.values():
+        run = []
+        for candidate in [*candidates, None]:
+            if (candidate is not None and run
+                    and candidate["page"]["pdf_page"] == run[-1]["page"]["pdf_page"] + 1
+                    and abs(candidate["x"] - run[0]["x"]) <= .02
+                    and abs(candidate["y"] - run[0]["y"]) <= .015
+                    and abs(candidate["width"] - run[0]["width"]) <= .02
+                    and abs(candidate["height"] - run[0]["height"]) <= .01):
+                run.append(candidate)
+                continue
+            _exclude_margin_run(run, "REPEATED_PUBLISHER_MARGIN", "publisher_margin_peers")
+            run = [candidate] if candidate is not None else []
+
+
 def extract_native_pages(path, spec, *, max_pages=100, progress=None):
     """逐页保留真实文字和待辨认区域；图片封面不阻断后续可读正文。"""
     pages, sizes = [], []
@@ -186,6 +236,7 @@ def extract_native_pages(path, spec, *, max_pages=100, progress=None):
                 progress("PROCESSING", {"page_number": number, "page_count": len(document)})
     _exclude_repeated_page_numbers(pages, sizes)
     _exclude_repeated_cover_titles(pages, sizes)
+    _exclude_repeated_publisher_bands(pages, sizes)
     if not any(page["text"].strip() for page in pages):
         raise ValueError("整份原件未取得可读文字层，请直接查看已保存原件")
     return pages
