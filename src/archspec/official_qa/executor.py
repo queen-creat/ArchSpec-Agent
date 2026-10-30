@@ -95,6 +95,7 @@ class OfficialQAExecutor:
         self.table_ink_input, self.table_ink_findings = None, []
         self.parallel_lookup, self.parallel_parts = None, ()
         self.candidate_lookup = None
+        self.related_reading_hit_ids = set()
         self.registered_sources = None
         self.search_options = {}
         self.local_source_plan = None
@@ -382,6 +383,36 @@ class OfficialQAExecutor:
             return self._check_project(result, packet), None
         return None, (packet, conditions, source_ids, local_question, local_spacing, daylight_value)
 
+    def _unverified_reading_candidates(self, searched, conditions):
+        """只保留本次前五里的两个固定正文入口，不证明问题对应关系。"""
+        if (self.plan.topic != "UNKNOWN" or self.plan.operation != "REFERENCE_LOOKUP"
+                or self.parallel_parts or self.plan.explicit_clause_numbers
+                or self.plan.query_focus is not None):
+            return set()
+        from archspec.official_documents.reference_relevance import phrases
+
+        terms = phrases(self.plan.search_query)
+        candidates = [hit for hit in searched["results"]
+                      if self._source_allowed(hit)
+                      and self.policy.matches_source_title(hit.get("title", ""), conditions)
+                      and self.policy.is_body(hit["text"], hit.get("clause_number"))
+                      and len(terms & phrases(hit["text"])) >= 2]
+        preferred = set(searched.get("candidate_selection", {}).get("preferred_ids", ()))
+        if any(hit["id"] in preferred or self.policy.relevant_text(
+                hit["text"], conditions, source_title=hit.get("title", ""))
+               for hit in searched["results"] if self._source_allowed(hit)
+               and self.policy.is_body(hit["text"], hit.get("clause_number"))):
+            return set()
+        chosen, units = set(), set()
+        for hit in candidates:
+            key = hit["source_id"], hit["snapshot_id"], hit["clause_number"]
+            if key not in units:
+                chosen.add(hit["id"])
+                units.add(key)
+            if len(chosen) == 2:
+                break
+        return chosen
+
     def read_initial_candidates(self, result, conditions, source_ids, local_question, local_spacing):
         """按共同计划择取最多五条初读；原排名记录与实际择取分别保留。"""
         request = self.request
@@ -447,6 +478,10 @@ class OfficialQAExecutor:
             result["retrieval"].update(scope="YICHANG_LOCAL", query=request.query)
         trace.append({"step": "RETRIEVE", "state": "DONE", "message": ("同次检索按共同正文主题择取最多五条；保留原关键词前五记录" if selection is not None
                                                                     else f"前五命中{len(searched['results'])}条；使用原关键词排序")})
+        self.related_reading_hit_ids = self._unverified_reading_candidates(searched, conditions)
+        if self.related_reading_hit_ids:
+            result["retrieval"]["related_reading_ids"] = [
+                hit["id"] for hit in searched["results"] if hit["id"] in self.related_reading_hit_ids]
         contexts, evidence, seen, successful_reads = [], [], set(), set()
         for hit in searched["results"]:
             if not self._source_allowed(hit):
@@ -462,7 +497,8 @@ class OfficialQAExecutor:
                 relevant = relevant or hit["id"] in selection["preferred_ids"]
             body = (is_body(hit["text"], hit.get("clause_number")) if self.parallel_parts
                     else self.policy.is_body(hit["text"], hit.get("clause_number")))
-            if not (body or named_candidate) or not relevant:
+            related_reading = hit["id"] in self.related_reading_hit_ids
+            if not (body or named_candidate) or not (relevant or related_reading):
                 continue  # 目录仍留在原检索列表，只是不作规范事实回答。
             if local_spacing and not self.parallel_parts and not spacing_evidence(hit["text"]):
                 continue  # 日照时长与间距公式分别讨论，不改原检索排名。
@@ -521,7 +557,7 @@ class OfficialQAExecutor:
             for fragment in context["fragments"]:
                 if fragment["id"] in seen:
                     # 同一片段原先是邻接上下文、后来被检索命中时，升级角色而不是复制文字。
-                    if fragment["role"] != "RELATED_CONTEXT":
+                    if not related_reading and fragment["role"] != "RELATED_CONTEXT":
                         # 已读邻接后来被独立核为核心时，同时接回实际单元归属和续文。
                         # 同一固定片段不复制；已是MATCH不因另一次续读降级。
                         existing = next(row for row in evidence if row["chunk_id"] == fragment["id"])
@@ -540,12 +576,16 @@ class OfficialQAExecutor:
                     **{key: fragment[key] for key in ("text", "clause_number", "page_start", "page_end", "role", "warnings")},
                     **{key: fragment[key] for key in ("reading_unit_key", "reading_unit_label") if key in fragment},
                     "evidence_mode": "CANDIDATE_ONLY", "is_citable": False,
+                    # 本轮候选未核对应关系；核心/续文亦不进入回答账本。
+                    **({"role": "RELATED_CONTEXT"} if related_reading else {}),
                 })
         return contexts, evidence, seen
 
     def read_requirement_supplements(self, result, conditions, source_ids, contexts, evidence,
                                     seen, local_question, local_spacing):
         """已有领域固定读器与唯一概念探查共享本轮预算，不递归读邻接。"""
+        if self.related_reading_hit_ids:
+            return []  # 未核对应关系不触发补查、引用追读或额外候选。
         trace, gaps = result["trace"], result["gaps"]
         # 灭火条件的邻接片段不能直接当答案；按原身份补读全部主文和续文。
         supplements, supplement_gaps = (read_fire_supplements(
@@ -683,7 +723,8 @@ class OfficialQAExecutor:
                                          *(part["chunk_id"] for part in page.get("reading_parts", []))]}
         linked_chunks = {identity for context in contexts
                          for ref in context.get("clause_references", []) for identity in ref["chunk_ids"]}
-        evidence.sort(key=lambda row: -1 if self.policy.local_spacing and row.get("reading_unit_key") and row["role"] != "RELATED_CONTEXT" else
+        evidence.sort(key=lambda row: -2 if row["chunk_id"] in self.related_reading_hit_ids else
+                      -1 if self.policy.local_spacing and row.get("reading_unit_key") and row["role"] != "RELATED_CONTEXT" else
                       0 if row["role"] == "MATCH" else
                       1 if row["role"] == "CONTINUATION" else
                       2 if row["chunk_id"] in table_chunks else
@@ -865,6 +906,10 @@ class OfficialQAExecutor:
             gaps.append("来源版本、项目适用性和识别文字尚未完成专业核验。")
             if any("LOW_CONFIDENCE_OCR" in row["warnings"] for row in usable):
                 gaps.append("命中页有低置信度识别文字，数字、单位和否定词需核对原页。")
+        if not items and self.related_reading_hit_ids:
+            result["reading_relation"] = "UNVERIFIED_RETRIEVAL"
+            result["summary"] = "已保留检索到的候选原文和原页；与原问的对应关系尚未核对，本次仅供阅读。"
+            gaps.append("候选来自本次前五，未确认对象、条件或所问要求；未调用整理器或生成自动摘录。")
         # 已完成输出前的原件/权限复核；原表组仅提供当前账本里的固定阅读出处。
         result["context_groups"].extend(build_table_groups(contexts, evidence))
         result["context_groups"].extend(build_clause_groups(contexts, evidence))
