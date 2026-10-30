@@ -398,7 +398,8 @@ def explicit_clause_requirements(plan, *, contexts=None, core_keys=None, results
             state, reason = "PARTIAL", "已定位缓存候选，仍需读取同书同快照完整正文；定位不代表证据读齐。"
         else:
             state, reason = "NOT_RETRIEVED", "本次缓存检索未定位该条号，仍需在本地固定正文核读。"
+        label = number if ARTICLE.fullmatch(number) else f"第{number}条"
         rows.append(EvidenceRequirement(f"explicit-clause:{number}", kind="EXPLICIT_REFERENCE",
-            trigger="BEFORE_SEARCH", subject=number, reason=f"第{number}条：{reason}",
+            trigger="BEFORE_SEARCH", subject=number, reason=f"{label}：{reason}",
             completeness="FIXED_EXPLICIT_CLAUSE", state=state, fixed_targets=tuple(fixed)))
     return tuple(rows)

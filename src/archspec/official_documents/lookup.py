@@ -612,7 +612,8 @@ def lookup_context(query, result, *, plan=None, source_ids=None, related_only=Fa
                 subject_query = subject_query.replace(target["value"], " ")
     terms = _phrases(subject_query)
     exact = CLAUSE.fullmatch(normalized.strip()) or ARTICLE.fullmatch(normalized.strip())
-    numbered = CLAUSE.findall(normalized) if explicit else []
+    # 只消费共同计划已绑定的条号，中文与数字同用来源交集和精确比较。
+    numbered = question.explicit_clause_numbers if explicit else ()
     parts = [] if exact or numbered else _parallel_requirements(subject_query, question)
     # 同号续文只在同书同快照内共享主题；没有完整条号的片段不能跨条合并。
     groups = defaultdict(list)

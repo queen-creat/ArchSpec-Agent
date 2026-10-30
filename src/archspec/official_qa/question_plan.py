@@ -8,6 +8,7 @@ from typing import Annotated, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
+from archspec.official_documents.clause_units import ARTICLE, CLAUSE
 from archspec.official_qa.condition_checks import query_conditions
 from archspec.official_qa.daylight_conditions import (
     daylight_query_conditions,
@@ -305,7 +306,7 @@ class LocalPlanner:
     def propose(self, query: str, public_conditions: dict[str, str], *, allow_reference_focus=True) -> dict:
         query = requested_content(query)
         topic, operation, focus = "UNKNOWN", "REFERENCE_LOOKUP", None
-        if re.fullmatch(r"\d+(?:\.\d+){2,3}", query):
+        if CLAUSE.fullmatch(query.strip()):
             topic = "EXACT_REFERENCE"
         elif net_height_question(query):
             topic = "NET_HEIGHT"
@@ -377,6 +378,14 @@ def bind_literal_model_intent(proposal, query, public_conditions):
     return bound, notes
 
 
+def _explicit_reference_numbers(content):
+    """中文条号仅认明确引用边界；不把第一条道路等物理对象量词当查条。"""
+    article = (ARTICLE.pattern + r"(?=\s*(?:的?(?:内容|原文|规定|要求|出处)"
+               r"|[、，,；;和与及或]|[？?。]?$))")
+    pattern = re.compile(r"\d+(?:\.\d+){2,3}|" + article)
+    return tuple(dict.fromkeys(match[0] for match in pattern.finditer(content)))
+
+
 def build_question_plan(request: QuestionRequest, proposal, project_provider=None, *,
                         confirmed_conditions=None, condition_provenance=(),
                         project_condition_fingerprint=None, effective_source_ids=None,
@@ -400,7 +409,7 @@ def build_question_plan(request: QuestionRequest, proposal, project_provider=Non
         discovery = None
     if discovery is not None and (targets := discovery.explicit_targets(content)):
         scope = {"route": discovery.route, "region": discovery.region, "targets": targets}
-        numbers = tuple(dict.fromkeys(re.findall(r"\d+(?:\.\d+){2,3}", PUBLIC_CODE.sub(" ", content))))
+        numbers = _explicit_reference_numbers(PUBLIC_CODE.sub(" ", content))
         if len(numbers) == 1:
             clause_number = numbers[0]
         # 明确书目和条号是出处查找；多号仍保留唯一条号字段为空，不猜选其中一个。
