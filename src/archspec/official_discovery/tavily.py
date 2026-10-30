@@ -9,8 +9,6 @@ from urllib.parse import urlsplit
 
 import httpx
 
-from archspec.official_http import official_http_client
-
 from archspec.official_discovery.local_sources import TARGET
 from archspec.official_discovery.plan import REGION_NAMES
 from archspec.official_discovery.public_queries import (
@@ -22,6 +20,7 @@ from archspec.official_discovery.public_queries import (
 )
 from archspec.official_documents.government_urls import validate_government_url
 from archspec.official_documents.local_policy import reviewed_public_terms
+from archspec.official_http import official_http_client
 
 ENDPOINT = "https://api.tavily.com/search"
 VERSION = "TAVILY_GOV_CLUES_V4"
@@ -48,12 +47,13 @@ def validate_public_term(term):
     """只接受登记公共词及公开地名组合，重复防止旁路发送私有问题。"""
     if not isinstance(term, str) or len(term) > 200 or term != term.strip():
         raise ValueError("Tavily只接受已登记公共查询词")
-    valid = term in _PUBLIC_TERMS or normalize_standard_code(term) is not None
+    base = re.sub(r" (?:19|20)[0-9]{2}年版$", "", term)
+    valid = base in _PUBLIC_TERMS or normalize_standard_code(base) is not None
     if not valid:
         for region in REGION_NAMES:
             prefix = region + " "
-            if term.startswith(prefix):
-                rest = term[len(prefix):]
+            if base.startswith(prefix):
+                rest = base[len(prefix):]
                 valid = rest in _PUBLIC_TERMS or normalize_standard_code(rest) is not None
                 break
     if not valid:

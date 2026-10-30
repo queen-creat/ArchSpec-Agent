@@ -3,8 +3,9 @@
 import re
 import unicodedata
 from collections.abc import Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 
+from archspec.official_discovery.editions import bind_editions, source_editions, without_editions
 from archspec.official_discovery.local_sources import TARGET
 from archspec.official_discovery.public_queries import (
     LOCAL_PLANNING_QUERY,
@@ -53,8 +54,8 @@ def non_rule_notice_title(title):
         r"|(?:会议|培训|采购|招标).*(?:通知|公告)$", subject))
 
 
-def _explicit_reference_targets(query):
-    """先识别完整公共引用，再按引用之间的并列词分组，不拆题名内部标点。"""
+def _reference_groups(query):
+    """公开引用原位置共用一次；并列分组不拆题名内部标点。"""
     mentions = [(match.start(), match.end(), ("CODE", normalize_standard_code(match.group())))
                 for match in PUBLIC_CODE.finditer(query)]
     mentions.extend((match.start(), match.end(), ("TITLE", title))
@@ -62,21 +63,34 @@ def _explicit_reference_targets(query):
                     for match in re.finditer(re.escape(title), query))
     groups, previous_end = [], 0
     for start, end, target in sorted(mentions, key=lambda item: (item[0], -item[1])):
-        # 重叠题名只保留完整外层；只检查两个已识别引用之间的文字。
         if start < previous_end:
             continue
-        # 只有完整并列结构才另起一组，“涉及”等普通词中的单字不能扩大范围。
         between = re.sub(r'[\s《》〈〉（）()“”「」『』"]+', "", query[previous_end:start])
         if not groups or re.fullmatch(r"(?:与|和|及|以及|[、，,；;])+", between):
             groups.append([])
-        groups[-1].append(target)
+        groups[-1].append((start, end, target))
         previous_end = end
-    targets = []
-    for group in groups:
-        # 同书编号带题名仍以编号为准；独立并列、无编号的书保留题名目标。
-        codes = [target for target in group if target[0] == "CODE"]
-        targets.extend(codes or group)
-    return tuple(dict.fromkeys(targets))
+    return groups
+
+
+def _group_targets(group):
+    targets = [item[2] for item in group]
+    return tuple(dict.fromkeys([target for target in targets if target[0] == "CODE"] or targets))
+
+
+def _explicit_reference_targets(query):
+    """同书编号带题名仍以编号为准；不改原有多书分组合同。"""
+    return tuple(dict.fromkeys(target for group in _reference_groups(query) for target in _group_targets(group)))
+
+
+def _edition_spans(query):
+    spans = []
+    for group in _reference_groups(query):
+        targets = _group_targets(group)
+        for start, end, target in group:
+            bound = (target,) if target in targets else targets
+            spans.append((start, end, bound))
+    return spans
 
 
 @dataclass(frozen=True)
@@ -89,14 +103,19 @@ class DiscoveryPlan:
     queries: tuple[tuple[str, str], ...]
     omitted_query_count: int
     version: str = "DISCOVERY_PLAN_V1"
+    requested_editions: tuple[tuple[str, str, str], ...] = ()
 
     def public_dict(self):
-        return {
+        result = {
             "version": self.version, "route": self.route, "region": self.region,
             "targets": [{"kind": kind, "value": value} for kind, value in self.targets],
             "queries": [{"term": term, "reason": reason} for term, reason in self.queries],
             "omitted_query_count": self.omitted_query_count,
         }
+        if self.requested_editions:
+            result["requested_editions"] = [{"kind": kind, "value": value, "year": year}
+                for kind, value, year in self.requested_editions]
+        return result
 
     def explicit_targets(self, query):
         """只标记原问明确写出的来源；主题推导的候选书名不限制用户的资料范围。"""
@@ -107,6 +126,28 @@ class DiscoveryPlan:
                      and _compact(value) in _compact(query))
 
     def match_source(self, standard_code, title):
+        """主字段先核同书，再独立核年版；未知或多版本对应不猜。"""
+        if not self.requested_editions:
+            return self._match_source_identity(standard_code, title)
+        code, name = without_editions(standard_code), without_editions(title)
+        identity = self._match_source_identity(code, name)
+        if identity != "TARGET":
+            return identity
+        required = set()
+        for kind, value, year in self.requested_editions:
+            if kind == "UNRESOLVED":
+                return "UNKNOWN"
+            one = replace(self, targets=((kind, value),), requested_editions=())
+            if one._match_source_identity(code, name) == "TARGET":
+                required.add(year)
+        if not required:
+            return identity
+        observed = source_editions(standard_code, title)
+        if len(required) != 1 or len(observed) != 1:
+            return "UNKNOWN"
+        return "TARGET" if required == observed else "ASSOCIATED"
+
+    def _match_source_identity(self, standard_code, title):
         """只核实际公告主字段；搜索题名、摘要和废止清单不能替代主规范身份。"""
         if not isinstance(title, str) or not title.strip() or not isinstance(standard_code, str):
             return "UNKNOWN"
@@ -219,7 +260,7 @@ def _target_region(query):
 
 
 
-def build_discovery_plan(query, topics=(), *, region=None, public_titles=()):
+def _build_discovery_plan(query, topics=(), *, region=None, public_titles=()):
     """复用既有安全公共词规划，不存原问题，不接受调用方新增规范 URL。"""
     public_titles = validated_public_titles(public_titles)
     query = query.strip()
@@ -291,6 +332,29 @@ def build_discovery_plan(query, topics=(), *, region=None, public_titles=()):
             ("TITLE" if item["term"] in PUBLIC_TITLES else "TOPIC", item["term"]) for item in queries)
     return DiscoveryPlan("MOHURD", None, targets,
                          tuple((item["term"], item["reason"]) for item in queries), omitted)
+
+
+def build_discovery_plan(query, topics=(), *, region=None, public_titles=()):
+    """所有消费者共享原问年版；公开词仍有界，原问题不会进入搜索请求。"""
+    plan = _build_discovery_plan(query, topics, region=region, public_titles=public_titles)
+    content = requested_content(query.strip())
+    spans = _edition_spans(content)
+    # 审核地方题名自身可能含年版；完整登记原字仍走既有题名身份合同。
+    spans.extend((match.start(), match.end(), ((kind, value),))
+                 for kind, value in plan.targets if kind in {"TITLE", "LOCAL_TOPIC"}
+                 for match in re.finditer(re.escape(value), content))
+    editions = bind_editions(content, spans)
+    if not editions:
+        return plan
+    queries = plan.queries
+    # 唯一明确书目/年版优先查找；多书或多版不猜对应、不扩大三词额度。
+    if len(editions) == 1 and editions[0][0] != "UNRESOLVED":
+        _, value, year = editions[0]
+        term = f"{value} {year}年版"
+        queries = ((term, "原问明确年版的公共引用；不是版本证明"),) + tuple(
+            row for row in queries if row[0] != value and row[0] != term)
+    return replace(plan, requested_editions=editions, queries=queries[:3],
+                   omitted_query_count=plan.omitted_query_count + max(0, len(queries) - 3))
 
 
 def resolve_query_region(query, *, project_region=None):

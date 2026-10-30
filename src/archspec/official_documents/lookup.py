@@ -456,7 +456,7 @@ def _reading_source_matches(prepared, item):
     """查阅标注与初读择取共用主文件角色；地域/许可仍由各自固定读取门核验。"""
     discovery, policy = prepared.discovery_plan, prepared.policy
     explicit = bool(discovery and discovery.explicit_targets(prepared.original_query))
-    return (not (explicit or prepared.region and policy.local_spacing)
+    return prepared.question_plan.matches_explicit_source(item) and (not (explicit or prepared.region and policy.local_spacing)
             or discovery.match_source(item.get("standard_code"), item.get("title")) == "TARGET") and policy.matches_source_title(
                 item.get("title", ""), prepared.question_plan.conditions)
 

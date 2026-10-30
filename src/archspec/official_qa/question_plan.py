@@ -220,13 +220,15 @@ class QuestionPlan(SnapshotRecord):
     understanding_reason: str | None = None
     public_search_titles: tuple[str, ...] = field(default=(), metadata={"omit_empty": True})
 
+    requested_editions: tuple[tuple[str, str, str], ...] = field(default=(), metadata={"omit_empty": True})
+
     def __post_init__(self):
         from archspec.official_discovery.public_queries import validated_public_titles
 
         # 模型建议只作读取顺序提示，不变成用户已指定的规范或工程适用性。
         object.__setattr__(self, "public_search_titles", validated_public_titles(self.public_search_titles))
         for name in ("conditions", "public_conditions", "condition_provenance", "explicit_source_scope",
-                     "explicit_clause_numbers", "query_focus"):
+                     "explicit_clause_numbers", "query_focus", "requested_editions"):
             object.__setattr__(self, name, freeze_value(getattr(self, name)))
 
     @property
@@ -241,11 +243,11 @@ class QuestionPlan(SnapshotRecord):
     def matches_explicit_source(self, source):
         """同一明确目标核登记、固定上下文及最终证据；不推断版本现行或使用许可。"""
         if self.explicit_source_scope is None:
-            return True
+            return not self.requested_editions
         from archspec.official_discovery.plan import DiscoveryPlan
 
         scope = self.explicit_source_scope
-        target = DiscoveryPlan(scope["route"], scope["region"], tuple(scope["targets"]), (), 0)
+        target = DiscoveryPlan(scope["route"], scope["region"], tuple(scope["targets"]), (), 0, requested_editions=self.requested_editions)
         return target.match_source(source.get("standard_code"), source.get("title")) == "TARGET"
 
 
@@ -260,7 +262,7 @@ class QuestionPlan(SnapshotRecord):
         from archspec.official_discovery.plan import DiscoveryPlan
 
         scope = self.explicit_source_scope
-        one = DiscoveryPlan(scope["route"], scope["region"], (tuple(target),), (), 0)
+        one = DiscoveryPlan(scope["route"], scope["region"], (tuple(target),), (), 0, requested_editions=self.requested_editions)
         return one.match_source(source.get("standard_code"), source.get("title")) == "TARGET"
 
 
@@ -446,6 +448,7 @@ def build_question_plan(request: QuestionRequest, proposal, project_provider=Non
         condition_provenance=provenance, project_condition_fingerprint=project_condition_fingerprint,
         explicit_source_scope=scope, explicit_clause_number=clause_number,
         explicit_clause_numbers=numbers,
+        requested_editions=discovery.requested_editions if discovery else (),
         planner_source=planner_source, query_focus=query_focus,
         public_search_titles=semantic.public_search_titles,
         # 未登记本地主题是能力缺口，不能据此断言用户表达含糊。
