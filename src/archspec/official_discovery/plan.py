@@ -260,6 +260,26 @@ def _target_region(query):
 
 
 
+def _general_reference_candidate(query):
+    """仅用已有明确原字查阅结构补固定公共候选，不从原问外发私有词。"""
+    if "《" in query or "》" in query:
+        return None  # 未登记书目不能被默认通用规范悄悄代替。
+    from archspec.official_qa.question_plan import LocalPlanner
+
+    proposal = LocalPlanner().propose(query, {})
+    if (proposal["topic"] == "UNKNOWN" and proposal["understanding"] == "CLEAR"
+            and proposal["operation"] == "REFERENCE_LOOKUP" and proposal.get("query_focus")):
+        from archspec.official_discovery.public_scope_catalog import PUBLIC_SECTION_CANDIDATES
+
+        subjects = proposal["query_focus"]["subjects"]
+        for title, headings, _url, _sha, _pages in PUBLIC_SECTION_CANDIDATES:
+            if any(term in subject for heading in headings for term in heading.split("、")
+                   for subject in subjects):
+                return {"term": title,
+                        "reason": "对象对应已核公开章节的候选书目；不是选书、适用性或正文证明"}
+    return None
+
+
 def _build_discovery_plan(query, topics=(), *, region=None, public_titles=()):
     """复用既有安全公共词规划，不存原问题，不接受调用方新增规范 URL。"""
     public_titles = validated_public_titles(public_titles)
@@ -322,7 +342,13 @@ def _build_discovery_plan(query, topics=(), *, region=None, public_titles=()):
                    for title in public_titles]
         omitted = 0
     else:
-        queries, omitted = plan_queries(query, topics)
+        try:
+            queries, omitted = plan_queries(query, topics)
+        except ValueError:
+            candidate = _general_reference_candidate(query)
+            if candidate is None:
+                raise
+            queries, omitted = [candidate], 0
     codes = extract_public_codes(query)
     if codes:
         targets = _explicit_reference_targets(query)
