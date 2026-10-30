@@ -196,7 +196,12 @@ def numbered_statement_pairs(text):
             begin, finish = sentence.span()
             role_sentence = item[begin:finish].removesuffix("。")
             raw_sentence = original[begin:finish].removesuffix("。")
-            terminal = re.search(r"[；;：:]", role_sentence)
+            # A colon between literal digits is a ratio, including OCR line wraps.
+            # Keep offsets and original text; other colons still end the statement.
+            terminal = next((mark for mark in re.finditer(r"[；;：:]", role_sentence)
+                             if mark[0] in "；;" or not (
+                                 re.search(r"[0-9０-９]\s*$", role_sentence[:mark.start()])
+                                 and re.match(r"\s*[0-9０-９]", role_sentence[mark.end():]))), None)
             if terminal:
                 role_sentence, raw_sentence = role_sentence[:terminal.start()], raw_sentence[:terminal.start()]
             pairs.extend(direct_statement_pairs(raw_sentence, role_text=role_sentence))
