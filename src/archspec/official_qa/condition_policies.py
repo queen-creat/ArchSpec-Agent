@@ -102,6 +102,16 @@ class ConditionPolicy:
             numbered_statement_pairs,
             subsequent_subject_pairs,
         )
+        from archspec.official_documents.reference_relevance import reference_dimension_variants
+
+        def attribute_matches(value, part, *, starts=False):
+            value = re.sub(r"\s+", "", value)
+            variants = (value,)
+            # “尺寸”查出处沿用候选的宽/高口径，不宣称已回答全部尺寸或测量方法。
+            # 只扩展句末泛属性，尺寸精度等实质限定与明确宽度/高度保持原字。
+            if self.operation == "REFERENCE_LOOKUP" and value.endswith("尺寸"):
+                variants += reference_dimension_variants(value)
+            return any(part.startswith(term) if starts else term in part for term in variants)
 
         # 依据条件仍完整保留在原引用中；只在核角色时不借输入属性回答输出问题。
         role_text = direct_statement_text(text)
@@ -118,7 +128,7 @@ class ConditionPolicy:
         for role, raw in numbered_statement_pairs(text):
             statements.append((role, raw))
             if (colon and all(value in introduction for value in self.query_focus["subjects"])
-                    and any(compact(role).startswith(value) for value in self.query_focus["attributes"])):
+                    and any(attribute_matches(value, compact(role), starts=True) for value in self.query_focus["attributes"])):
                 statements.append((role_text[:colon.start()] + "：" + role,
                                    text[:colon.start()] + "：" + raw))
         statements = [(compact(role), compact(raw)) for role, raw in statements]
@@ -145,7 +155,7 @@ class ConditionPolicy:
             statements.extend((compact(role), compact(raw)) for role, raw in
                               subsequent_subject_pairs(text, self.query_focus["subjects"]))
         # 对象/范围与所问属性必须由同一分句或同一继承列表行支持，不能全条拼词。
-        return any(direct_match(part) and all(re.sub(r"\s+", "", value) in part
+        return any(direct_match(part) and all(attribute_matches(value, part)
                                              for value in self.query_focus["attributes"])
                    and (self.topic != "UNKNOWN" or self.operation != "MEASUREMENT_METHOD"
                         or measurement_statement(original)) for part, original in statements)

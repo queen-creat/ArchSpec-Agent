@@ -95,6 +95,11 @@ def measurement_statement(text):
                           re.sub(r"\s+", "", text)))
 
 
+def reference_dimension_variants(value):
+    """复用既有尺寸查原文口径；仅生成核对词，不改原问、原文或选取数值。"""
+    return tuple(value.replace("尺寸", word) for word in ("宽度", "高度")) if "尺寸" in value else (value,)
+
+
 def reference_matches(query, text, conditions, *, scope_context=()):
     """同一规则用于候选和完整核心；普通用途是背景，不能替代所问对象。"""
     original, text = query, _compact(text)
@@ -119,8 +124,7 @@ def reference_matches(query, text, conditions, *, scope_context=()):
     if re.search(r"从哪(?:里)?(?:开始)?量|怎么量|如何量|计量", original) and not measurement_statement(text):
         return False
     # 尺寸是问法中的属性集合；宽/高任一实际规定可供查阅，不推算数值。
-    variants = ([query.replace("尺寸", word) for word in ("宽度", "高度")]
-                if "尺寸" in query else [query])
+    variants = reference_dimension_variants(query)
     # 专用楼梯用途须直接绑定分类行；不能借表注排除名单或另一用途补齐。
     start = re.match(r"(.+?楼梯(?:踏步|平台)?)", query.strip())
     if start and scoped_object_match(start[1], text) is False:
