@@ -77,7 +77,7 @@
     "src/archspec/official_discovery/provider.py": "b622143311a2287f4b290ade1cfb65ff8407ce504ef6dc4011f4a873dc6c36d4",
     "src/archspec/official_discovery/public_queries.py": "ffd8ad8210c07b5fa62de1bc4752e5ca63386914241ea570ec7491f5adab3c90",
     "src/archspec/official_discovery/public_regions.py": "b2be50601764d9fae86dec68caf399d6d5f8b9ac5c9feff970768f3f9332d49d",
-    "src/archspec/official_discovery/public_scope_catalog.py": "45269a56235f466011594d8f55ff3ce84b16f8cebaec28bd075dfec112850f70",
+    "src/archspec/official_discovery/public_scope_catalog.py": "7c99f1262f8cbba081dcddcbd75819dc236c071eb54ecfc0d08040ad033a435b",
     "src/archspec/official_discovery/public_title_catalog.py": "6ac9b87064303fe3d85a16f599926bd5955813f3f72d6c83da3e4b203b9ae4fc",
     "src/archspec/official_discovery/query_flow.py": "8a46f61206bdf8fc1e46006659ca9df86d007a3f881bfe0378809100836e9035",
     "src/archspec/official_discovery/registered_publications.py": "e2d490283c9ce4cb1ac0b85af14a0c00ecdcdd90b332c3e6c0911a0cbab54316",
