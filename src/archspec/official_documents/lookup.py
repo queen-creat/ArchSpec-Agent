@@ -484,7 +484,16 @@ def _preferred_reading_indices(prepared, snapshot):
     for index, row in enumerate(rows):
         groups[runs.get(index, (index,))[0]].append((index, row))
     preferred = set()
+    from archspec.official_documents.reading_scope import direct_statement_pairs
+
+    terms = prepared.question_plan.local_reading_terms
     for members in groups.values():
+        # 术语只在同一陈述内共同出现才影响阅读顺序，不能跨对象借词。
+        original = "\n".join(row["text"] for _, row in members)
+        if terms and any(
+                all(word in _compact(statement) for word in term.split())
+                for _, statement in direct_statement_pairs(original) for term in terms):
+            preferred.update(index for index, _ in members)
         text = _compact("\n".join(row["text"] for _, row in members))
         if _operation_matches(prepared.policy, prepared.question_plan, text, members[0][1].get("clause_number"), source_title=snapshot.get("title", "")):
             preferred.update(index for index, _ in members)

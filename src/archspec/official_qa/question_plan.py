@@ -155,6 +155,23 @@ class QueryFocusProposal(BaseModel):
         return values
 
 
+def validated_local_reading_terms(values):
+    """只接收有界文字术语；不承载条号、数值、网址或条件。"""
+    if not isinstance(values, (list, tuple)):
+        return ()
+    result = []
+    for value in values[:2]:
+        if not isinstance(value, str):
+            continue
+        words = value.split()
+        if 1 <= len(words) <= 4 and all(
+                re.fullmatch(r"[\u3400-\u9fffA-Za-z]{2,16}", word) for word in words):
+            term = " ".join(words)
+            if term not in result:
+                result.append(term)
+    return tuple(result)
+
+
 class ModelSemanticProposal(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True, str_strip_whitespace=True)
     version: Literal["MODEL_SEMANTIC_PLAN_V2"] = "MODEL_SEMANTIC_PLAN_V2"
@@ -165,6 +182,13 @@ class ModelSemanticProposal(BaseModel):
     query_focus: QueryFocusProposal | None = None
     public_search_titles: tuple[Annotated[str, Field(min_length=2, max_length=100)], ...] = Field(
         default=(), max_length=3)
+
+    local_reading_terms: tuple[str, ...] = ()
+
+    @field_validator("local_reading_terms", mode="before")
+    @classmethod
+    def reading_terms(cls, values):
+        return validated_local_reading_terms(values)
 
     @field_validator("public_search_titles")
     @classmethod
@@ -179,10 +203,14 @@ class ModelSemanticProposal(BaseModel):
         excluded = {"query_focus"} if self.query_focus is None else set()
         if not self.public_search_titles:
             excluded.add("public_search_titles")
+        if not self.local_reading_terms:
+            excluded.add("local_reading_terms")
         return self.model_dump(exclude=excluded)
 
     @model_validator(mode="after")
     def registered_combination(self):
+        if self.topic != "UNKNOWN" or self.operation != "REFERENCE_LOOKUP" or self.understanding != "CLEAR":
+            object.__setattr__(self, "local_reading_terms", ())
         if self.public_search_titles and (self.topic != "UNKNOWN" or self.understanding != "CLEAR"):
             object.__setattr__(self, "public_search_titles", ())
         # 焦点是原问的额外约束，不替代专题政策；已登记主题也不能丢掉对象。
@@ -220,11 +248,17 @@ class QuestionPlan(SnapshotRecord):
     understanding_reason: str | None = None
     public_search_titles: tuple[str, ...] = field(default=(), metadata={"omit_empty": True})
 
+    local_reading_terms: tuple[str, ...] = field(default=(), metadata={"omit_empty": True})
+
     requested_editions: tuple[tuple[str, str, str], ...] = field(default=(), metadata={"omit_empty": True})
 
     def __post_init__(self):
         from archspec.official_discovery.public_queries import validated_public_titles
 
+        terms = validated_local_reading_terms(self.local_reading_terms)
+        if self.topic != "UNKNOWN" or self.operation != "REFERENCE_LOOKUP" or self.understanding != "CLEAR":
+            terms = ()
+        object.__setattr__(self, "local_reading_terms", terms)
         # 模型建议只作读取顺序提示，不变成用户已指定的规范或工程适用性。
         object.__setattr__(self, "public_search_titles", validated_public_titles(self.public_search_titles))
         for name in ("conditions", "public_conditions", "condition_provenance", "explicit_source_scope",
@@ -484,6 +518,7 @@ def build_question_plan(request: QuestionRequest, proposal, project_provider=Non
         requested_editions=discovery.requested_editions if discovery else (),
         planner_source=planner_source, query_focus=query_focus,
         public_search_titles=semantic.public_search_titles,
+        local_reading_terms=semantic.local_reading_terms,
         # 未登记本地主题是能力缺口，不能据此断言用户表达含糊。
         # 仍保留原有非CLEAR拦截；原因不授权扩大证据或开始模型调用。
         understanding_reason=(None if semantic.understanding == "CLEAR" else
