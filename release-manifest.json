@@ -108,7 +108,7 @@
     "src/archspec/official_documents/native_text.py": "0102f24342d45e9141b3918946bd1738aa8eb05769057cd05ed99dd0f31e4f81",
     "src/archspec/official_documents/network_policy.py": "47c84aa1ca3ff29964c26fed326bd536966e2e219e6e80844f0384530c2a7282",
     "src/archspec/official_documents/notice_changes.py": "4e7e87f6f294e8316059eccd4c1c93818129368889647a1dd2abdc615f32c6c6",
-    "src/archspec/official_documents/ocr.py": "941a7c8ca56087e7737288b254a601e1e7bfb89ae05adea0ee242d36cd883770",
+    "src/archspec/official_documents/ocr.py": "43f084a553cd6491ce6ad96a0b9a75982acb2fe5f2d20a3a812c9d1d13c90966",
     "src/archspec/official_documents/official_fetch.py": "c02186511eceb8ee8f8f852ee7e9f65640d761c9205bad7884c3be465bd6eafb",
     "src/archspec/official_documents/original_pages.py": "09dd3f1ae56ccbe7182000a7ca20d8d4a25b1dd00b2506cb6bcc6560e7f6867b",
     "src/archspec/official_documents/originals.py": "431c12cfc574129b56035bf42b7e6a65ddc0393b4193bfb8f5d1a70b866462cb",

@@ -229,7 +229,12 @@ def _recover_text_gaps(page, rows, engine, scale, budget):
     for (row, before), (next_row, after) in pairwise(positioned):
         if budget[0] >= 2:
             break
-        if not paragraph(row, before) or not paragraph(next_row, after):
+        # 段尾可能只有几个字；一侧仍须是长正文，另一侧保留可定位短行。
+        # 不跳过已有短行去拼更远的两行，也不把两个短表格单元作为正文锚点。
+        def body_tail(item, bounds):
+            return len(item["text"].strip()) >= 4 and bounds[2] - bounds[0] >= 3 * height
+        if (not (paragraph(row, before) or paragraph(next_row, after))
+                or not body_tail(row, before) or not body_tail(next_row, after)):
             continue
         gap = after[1] - before[3]
         if (not .65 * height <= gap <= 2.5 * height
