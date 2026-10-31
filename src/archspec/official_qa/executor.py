@@ -450,6 +450,10 @@ class OfficialQAExecutor:
             if self.plan.original_query == lookup.normalized_query:
                 self.candidate_lookup = replace(lookup, question_plan=self.plan, policy=self.policy)
                 planned["lookup_plan"] = self.candidate_lookup
+                # 明确书目或条号已由同一计划绑定时，执行也消费它的正文选择词。
+                # 其余既有概念查询不变，绝不放宽服务端的来源/计划一致性校验。
+                if self.candidate_lookup.retrieval_query != self.candidate_lookup.legacy_retrieval_query:
+                    retrieval_query = self.candidate_lookup.retrieval_query
         searched = self.documents.search_all(retrieval_query, 5, source_ids,
                                              ranking_version="V1", **self.search_options, **planned)
         result["coverage"] = searched["coverage"]
