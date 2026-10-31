@@ -295,6 +295,15 @@ def discover_relations(source_id, snapshot_id, ordered_fragments):
     result, seen = [], set()
     for origin_key, core in units.items():
         origin = origin_key[0]
+        # 已核封页分区限定关系范围；未知或跨分区仍沿原全书唯一性要求。
+        partitions = {row.get("document_part") for row in core}
+        partition = next(iter(partitions)) if len(partitions) == 1 else None
+        if partition not in {"MAIN_TEXT", "COMMENTARY"}:
+            partition = None
+
+        def same_partition(parts, partition=partition):
+            return partition is None or all(row.get("document_part") == partition for row in parts)
+
         mentions = []
         if BODY.fullmatch(origin or ""):
             mentions.extend(("CLAUSE_REFERENCE", mention) for mention in _clause_mentions(core))
@@ -310,13 +319,15 @@ def discover_relations(source_id, snapshot_id, ordered_fragments):
             seen.add(identity)
             if kind == "CLAUSE_REFERENCE":
                 targets = [(key, parts) for key, parts in units.items() if key[0] == target
+                           and same_partition(parts)
                            and not any(DIRECTORY.search(row["text"]) for row in parts)]
                 # 同号多处时不猜正文/附表的引用方向；保留未定位引用与原页入口。
                 target_key, target_rows = targets[0] if len(targets) == 1 else (None, [])
                 target_ids = [row["id"] for row in target_rows]
                 witness = mention["witness"]
             else:
-                targets = caption_targets.get(number, [])
+                targets = [(row, token) for row, token in caption_targets.get(number, [])
+                           if same_partition([row])]
                 target_ids = list(dict.fromkeys(row["id"] for row, _ in targets))
                 witness = [*mention["witness"], *(token for _, token in targets)]
             proof = {
