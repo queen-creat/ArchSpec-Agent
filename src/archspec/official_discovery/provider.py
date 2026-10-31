@@ -9,6 +9,7 @@ from urllib.parse import urlencode, urljoin, urlsplit
 
 import httpx
 
+from archspec.official_discovery.public_queries import CODE_YEAR_SEPARATOR, normalize_standard_code
 from archspec.official_http import official_http_client
 from archspec.standard_catalog.provider import validate_official_url
 
@@ -17,7 +18,8 @@ ROOT = "https://www.mohurd.gov.cn"
 SEARCH_ROOT = ROOT + "/api-gateway/jpaas-jsearch-web-server/"
 SERVICE_ID = "e2f3058e2a3b4f8abc93eb76e739e3e7"
 CATEGORY_ID = "cc5c27d3eb894fd79cc47e72497ef2bf"  # 官网“信息公开”栏目
-CODE_PATTERN = r"(?:GB|JGJ|CJJ)(?:/T)?\s*\d+(?:\.\d+)?-\d{4}"
+CODE_PATTERN = (r"(?<![A-Za-z0-9])(?:GB|JGJ|CJJ)(?:/T)?\s*\d+(?:\.\d+)?\s*"
+                + CODE_YEAR_SEPARATOR + r"\s*\d{4}(?![A-Za-z0-9.]|" + CODE_YEAR_SEPARATOR + r")")
 MAX_BYTES = 2 * 1024 * 1024
 MAX_CHANGE_EVIDENCE_CHARS = 32000
 # 官网既有“现批准《…》”和“现批准国家/行业标准《…》”两种主批准句。
@@ -83,8 +85,10 @@ def _date_field(pattern: str, text: str) -> str | None:
 
 
 def _canonical_code(value: str) -> str:
-    value = re.sub(r"\s+", " ", value).strip()
-    return re.sub(r"^(GB(?:/T)?|JGJ(?:/T)?|CJJ(?:/T)?)\s*", r"\1 ", value)
+    code = normalize_standard_code(value)
+    if code is None:
+        raise ValueError("公告规范编号无法完整核对")
+    return code
 
 
 def explicit_identity_change(text: str, from_title: str, from_code: str) -> dict | None:

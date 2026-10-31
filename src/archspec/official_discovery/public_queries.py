@@ -42,9 +42,12 @@ PUBLIC_TITLES = (*LOCAL_PLANNING_TITLES, *LOCAL_SUNLIGHT_TITLES,
 )
 # 已登记地方/旧题名保留，出版目录扩展只增加公开名称，不推定编号与版本。
 PUBLIC_TITLES = tuple(dict.fromkeys((*PUBLIC_TITLES, *PUBLIC_CATALOG_TITLES)))
+# 排版连字符只表示已明确写出的编号分隔符；残缺年份不能退回无年份编号。
+CODE_YEAR_SEPARATOR = r"[-‐‑‒–—－]"
 PUBLIC_CODE = re.compile(
     r"(?<![A-Za-z0-9])(?P<prefix>GB|JGJ|CJJ)\s*(?P<t>/\s*T)?\s*"
-    r"(?P<number>\d{2,6}(?:\.\d{1,2})?)(?:\s*-\s*(?P<year>\d{4}))?(?![A-Za-z0-9.-])",
+    r"(?P<number>\d{2,6}(?:\.\d{1,2})?)(?:\s*" + CODE_YEAR_SEPARATOR
+    + r"\s*(?P<year>\d{4}))?(?![A-Za-z0-9.]|" + CODE_YEAR_SEPARATOR + r")",
     re.IGNORECASE,
 )
 

@@ -14,6 +14,7 @@ from archspec.official_discovery.plan import non_rule_notice_title
 from archspec.official_discovery.provider import MAX_BYTES
 from archspec.official_discovery.public_queries import (
     LOCAL_SUNLIGHT_TITLES,
+    PUBLIC_CODE,
     PUBLIC_TITLES,
     extract_public_codes,
 )
@@ -251,7 +252,7 @@ def inspect_government_copy(clue, plan, *, client=None, capture_original=None, c
                 if len(codes) != 1:
                     continue
                 title = next((t for t in sorted(PUBLIC_TITLES, key=len, reverse=True) if t in heading), None)
-                title = title or re.sub(r"(?:GB|JGJ|CJJ)(?:/T)?\s*\d+(?:\.\d+)?-\d{4}", "", heading).strip(" 《》()（）-—")
+                title = title or PUBLIC_CODE.sub("", heading).strip(" 《》()（）-—")
                 if title and plan.match_source(codes[0], title) == "TARGET":
                     matches.append((codes[0], title))
             matches = list(dict.fromkeys(matches))
