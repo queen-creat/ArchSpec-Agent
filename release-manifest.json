@@ -157,7 +157,7 @@
     "src/archspec/official_qa/clause_groups.py": "bd2b7f109bf43b0f16ae2b6aa931ae33b8b763519aa8e82e78cc8fb9c8a38afa",
     "src/archspec/official_qa/condition_checks.py": "c63e6a465b192818ba58bb7f9b34f7e96b9e0d38a7db0967cb543783faa3c139",
     "src/archspec/official_qa/condition_fields.py": "790d7a838747b4d4063cb67b5312c6acd5652b332bf915224db94aa2ae0139e0",
-    "src/archspec/official_qa/condition_policies.py": "f37143c8be9c7b29d8ed47fb5d909a763a0080d2b73620a8b35e5f45c6939e89",
+    "src/archspec/official_qa/condition_policies.py": "227f13759812cb3f0c584bbca2f8781d743bc3fc231e28399879f79adbaeaa79",
     "src/archspec/official_qa/context_groups.py": "78792f511c8b7675b18fcdaef3089aa21c0e40d732483d7854c91897a65782e3",
     "src/archspec/official_qa/context_selection.py": "d6510d0f05b10287a0866068326cadb99605adbd8cdd963007cfbd1b5f3d25c9",
     "src/archspec/official_qa/daylight_conditions.py": "2b2cad2769873191cafcd53c9c76232c36632a27236c1c1f9ebb8c978772040d",

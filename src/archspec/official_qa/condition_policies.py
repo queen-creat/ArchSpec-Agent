@@ -155,11 +155,15 @@ class ConditionPolicy:
         if any(direct_match(compact(role)) for role, _ in initial_statements):
             statements.extend((compact(role), compact(raw)) for role, raw in
                               subsequent_subject_pairs(text, self.query_focus["subjects"]))
-        # 对象/范围与所问属性必须由同一分句或同一继承列表行支持，不能全条拼词。
-        return any(direct_match(part) and all(attribute_matches(value, part)
-                                             for value in self.query_focus["attributes"])
-                   and (self.topic != "UNKNOWN" or self.operation != "MEASUREMENT_METHOD"
-                        or measurement_statement(original)) for part, original in statements)
+        # 每项属性分别需要同对象、同范围的直接陈述；同条可在不同句/分项规定
+        # 多种性能。只汇总已经独立通过角色与操作核对的陈述，不向整条借词。
+        qualified = [part for part, original in statements
+                     if direct_match(part)
+                     and (self.topic != "UNKNOWN" or self.operation != "MEASUREMENT_METHOD"
+                          or measurement_statement(original))]
+        return bool(qualified) and all(
+            any(attribute_matches(value, part) for part in qualified)
+            for value in self.query_focus["attributes"])
 
     def pre_search_issues(self, conditions: Mapping) -> dict:
         """出处/量法可先读；受条件影响的限值继续使用已有拒绝歧义检查。"""
