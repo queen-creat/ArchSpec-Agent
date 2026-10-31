@@ -3,6 +3,7 @@ import hashlib
 import json
 from dataclasses import dataclass, replace
 
+from archspec.official_discovery.editions import source_editions, without_editions
 from archspec.official_discovery.plan import DiscoveryPlan
 from archspec.official_discovery.public_queries import PUBLIC_TITLES, normalize_standard_code
 from archspec.official_discovery.tavily import reviewed_mohurd_publication
@@ -23,6 +24,8 @@ _DEFAULT_ENTRIES = (
 _DEFAULT_COPY_ENTRIES = (
     ("GB 50099-2011", "中小学校设计规范",
      "https://edu.foshan.gov.cn/attachment/0/196/196510/4866032.pdf"),
+    ("GB 50016-2014", "建筑设计防火规范（2018年版）",
+     "https://js.119.gov.cn/202111/715323810e37465891fc6a5f66b9589d_c_3d35986ea8ea4ce781db.html"),
 )
 _MAX_ENTRIES = 128
 
@@ -36,6 +39,7 @@ class _Publication:
 
 def _public_target(term):
     """只有公开编号或服务端登记题名可以选择入口，宽主题不产生确定编号。"""
+    term = without_editions(term)
     code = normalize_standard_code(term)
     if code is not None:
         return "CODE", code
@@ -92,7 +96,9 @@ class PublicationCatalog:
                 if not isinstance(row, dict) or set(row) != {"code", "title", "url"}:
                     raise ValueError
                 code = normalize_standard_code(row["code"])
-                if code is None or row["title"] not in PUBLIC_TITLES:
+                # 年版只装饰已登记公开题名；目录仍是寻找提示，后续实际主页面必须重核。
+                if (code is None or without_editions(row["title"]) not in PUBLIC_TITLES
+                        or len(source_editions(None, row["title"])) > 1):
                     raise ValueError
                 url = validate_government_url(row["url"])
                 entry = _Publication(code, row["title"], url)
@@ -151,6 +157,7 @@ class PublicationCatalog:
         return [
             {"title": entry.title, "url": entry.url}
             for entry in entries
-            if target_plan.match_source(entry.code, entry.title) == "TARGET"
+            if (not source_editions(None, entry.title) or plan.requested_editions)
+            and target_plan.match_source(entry.code, entry.title) == "TARGET"
             and query_plan.match_source(entry.code, entry.title) == "TARGET"
         ]

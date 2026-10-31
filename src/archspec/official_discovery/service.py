@@ -139,7 +139,7 @@ class DiscoveryService:
         local = plan.route == "YICHANG"
         queries, omitted = public_plan["queries"], plan.omitted_query_count
         # 新共同目标及公平调度隔离全部旧查询缓存；原公告和正文快照完全保留。
-        cache_identity = {"version": 8 if local else 22, "plan": public_plan}
+        cache_identity = {"version": 8 if local else 23, "plan": public_plan}
         if plan.route == "UNSUPPORTED_LOCAL":
             # 只隔离地方候选新排序，旧查询档案和全国/已审核来源缓存保持。
             cache_identity["local_notice_priority"] = 1
@@ -407,6 +407,20 @@ class DiscoveryService:
             with runtime_scope(bindings):
                 return operation(*args, **kwargs)
 
+        copies_for_query = getattr(self.publication_catalog, "copies_for_query", None)
+        copy_queues, copy_found = [], {}
+        if plan is not None and not registered_local and callable(copies_for_query):
+            for query in queries:
+                entries = copies_for_query(plan, query["term"])
+                copy_queues.append([entry["url"] for entry in entries])
+                for entry in entries:
+                    current = copy_found.setdefault(entry["url"], {**entry, "matched_queries": []})
+                    if query["term"] not in current["matched_queries"]:
+                        current["matched_queries"].append(query["term"])
+        # 明确年版且存在精确匹配的副本提示时，五次预算中留一次重新核主页面。
+        # 旧公告不能耗尽这个机会；未指定年版的既有调度和总预算均不变。
+        native_limit = 4 if plan is not None and plan.requested_editions and copy_found else 5
+
         with ThreadPoolExecutor(max_workers=3) as executor:
             futures = ([None] * len(queries) if registered_local else
                        [executor.submit(invoke, self.provider.search, q["term"]) for q in queries])
@@ -429,7 +443,7 @@ class DiscoveryService:
                     old = found.setdefault(item["url"], {**item, "matched_queries": []})
                     if query["term"] not in old["matched_queries"]:
                         old["matched_queries"].append(query["term"])
-            candidates = [item for item in self._fair_candidates(queues, found)
+            candidates = [item for item in self._fair_candidates(queues, found, limit=native_limit)
                           if notice_budget.reserve(item["url"])]
             inspected = [executor.submit(invoke, inspector.inspect, item) for item in candidates]
             results, read_successes = [], 0
@@ -445,18 +459,9 @@ class DiscoveryService:
                     results.append(self._match_notice(notice, plan) if plan else notice)
             # 公告没有目标完整附件时，复用已核政府全文入口；仍读实际首页再登记。
             # 与搜索和公告共用五次尝试，失败不释放，不把目录记录当正文。
-            copies_for_query = getattr(self.publication_catalog, "copies_for_query", None)
             has_attachment = any(row.get("attachments") and row.get("target_match") == "TARGET"
                 and row.get("notice_type") in {"PUBLICATION", "OFFICIAL_COPY"} for row in results)
-            if plan is not None and not registered_local and not has_attachment and callable(copies_for_query):
-                copy_queues, copy_found = [], {}
-                for query in queries:
-                    entries = copies_for_query(plan, query["term"])
-                    copy_queues.append([entry["url"] for entry in entries])
-                    for entry in entries:
-                        current = copy_found.setdefault(entry["url"], {**entry, "matched_queries": []})
-                        if query["term"] not in current["matched_queries"]:
-                            current["matched_queries"].append(query["term"])
+            if not has_attachment and copy_found:
                 for entry in self._fair_candidates(copy_queues, copy_found):
                     found.setdefault(entry["url"], entry)
                     if not notice_budget.reserve(entry["url"]):
