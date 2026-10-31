@@ -55,7 +55,10 @@ class DocumentParser:
                 blocks,
             )
         elif media_type == "application/pdf":
-            result = self._read_pdf(path)
+            try:
+                result = self._read_pdf(path)
+            except (pymupdf.FileDataError, RuntimeError, ValueError):
+                raise DocumentParseError("PDF无法提取文字，请对照原件查看") from None
         else:
             raise UnsupportedDocumentType(f"不支持的文件类型：{media_type}")
 

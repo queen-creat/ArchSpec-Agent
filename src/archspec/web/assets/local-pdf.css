@@ -1,0 +1,24 @@
+/* 本机资料沿用工作台颜色与字体；把空间留给原页。 */
+.local-pdf-upload,.local-pdf-toolbar,.local-pdf-heading{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+.local-pdf-upload .field{flex:1;min-width:0}
+.local-pdf-file{display:flex;align-items:baseline;justify-content:space-between;gap:12px;padding:12px 0;border-top:1px solid var(--line)}
+.local-pdf-file button{min-width:0;text-align:left;overflow-wrap:anywhere}
+.local-pdf-file small{color:var(--muted);flex-shrink:0}
+.local-pdf-dialog{width:min(1180px,calc(100vw - 24px));max-height:calc(100dvh - 20px);border:1px solid var(--line);border-radius:10px;padding:16px;color:var(--ink);background:var(--paper)}
+.local-pdf-dialog::backdrop{background:rgba(17,24,39,.45)}
+.local-pdf-heading{justify-content:space-between;margin-bottom:10px}
+.local-pdf-heading h3{font-size:18px;margin:0;overflow-wrap:anywhere;flex:1;min-width:0}
+.local-pdf-search{display:flex;gap:8px;margin:12px 0}
+.local-pdf-search input{min-width:0;flex:1}
+.local-pdf-results{display:grid;gap:6px;max-height:210px;overflow:auto;margin-bottom:10px}
+.local-pdf-hit{display:grid;gap:4px;text-align:left;padding:10px;border:1px solid var(--line);border-radius:6px;background:var(--paper);color:var(--ink)}
+.local-pdf-hit span{font-size:13px;color:var(--muted);overflow-wrap:anywhere}
+.local-pdf-hit:focus-visible{outline:3px solid var(--green);outline-offset:2px}
+.local-pdf-fragment{white-space:pre-wrap;overflow-wrap:anywhere;max-height:180px;overflow:auto;font:inherit;background:var(--canvas);padding:12px}
+.local-pdf-toolbar{margin:10px 0}
+.local-pdf-toolbar input{width:74px;min-width:0}
+.local-pdf-image{overflow:auto;max-height:68vh;min-height:280px;border:1px solid var(--line);background:var(--canvas)}
+.local-pdf-image img{display:block;max-width:none;height:auto}
+@media(max-width:520px){.local-pdf-file{display:block}.local-pdf-file small{display:block;margin-top:5px}.local-pdf-dialog{padding:10px}.local-pdf-toolbar{gap:6px}.local-pdf-search{flex-wrap:wrap}.local-pdf-search input{flex-basis:65%}}
+.local-pdf-search input,.local-pdf-toolbar input{border:1px solid var(--line);border-radius:6px;background:var(--paper);padding:8px;color:var(--ink)}
+.local-pdf-toolbar button,.local-pdf-heading button{min-height:36px;min-width:36px;padding:6px}

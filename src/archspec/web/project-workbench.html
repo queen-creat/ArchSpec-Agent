@@ -6,6 +6,7 @@
   <title>建筑规范查阅工作台</title>
   <link rel="stylesheet" href="/assets/project-workbench.css?v=33027a611e56">
   <link rel="stylesheet" href="/assets/workbench-ui.css?v=50884f931c69">
+  <link rel="stylesheet" href="/assets/local-pdf.css?v=abef3814fa80">
 </head>
 <body>
   <a class="skip-to-content" href="#workbench-main">跳到工作区</a>
@@ -449,6 +450,20 @@
       <label id="workspace-backup-preview" class="field workspace-backup-preview" hidden><span>备份内容（JSON，可手动保存）</span><textarea id="workspace-backup-text" readonly rows="8"></textarea></label>
     </details>
 
+    <details id="local-pdf-library" class="panel library-tools" data-workbench-section="library" hidden>
+      <summary class="advanced-summary">本机 PDF<small>导入文件，查找文字并对照原页</small></summary>
+      <div class="advanced-body">
+        <p class="section-description">导入后可查找文字、翻看原页；来源和版本需自行核对。</p>
+        <form id="local-pdf-upload" class="local-pdf-upload">
+          <label class="field"><span>PDF 文件</span><input id="local-pdf-file" name="file" type="file" accept=".pdf,application/pdf" required></label>
+          <button id="local-pdf-upload-button" class="primary-button" type="submit">导入本机</button>
+        </form>
+        <p id="local-pdf-status" class="inline-status" role="status"></p>
+        <button id="local-pdf-resume" type="button" class="quiet-button" hidden>继续上次阅读</button>
+        <div id="local-pdf-list"></div>
+      </div>
+    </details>
+
     <section id="library-inventory-panel" class="panel library-inventory-panel" data-workbench-section="library" hidden aria-labelledby="library-inventory-title">
       <div class="section-heading"><div><h2 id="library-inventory-title">已登记的官方资料</h2><p class="section-description">这是共享规范库，不随项目切换。正文取得与识别完成，仍不等于现行或适用。</p></div><button id="library-inventory-refresh" class="secondary-button" type="button">刷新清单</button></div>
       <p id="library-inventory-summary" class="library-inventory-summary"></p>
@@ -505,6 +520,30 @@
 
     </details>
 
+    <dialog id="local-pdf-dialog" class="local-pdf-dialog" aria-labelledby="local-pdf-title">
+      <div class="local-pdf-heading"><h3 id="local-pdf-title">本机 PDF</h3><button id="local-pdf-close" class="quiet-button" type="button">关闭阅读</button></div>
+      <p class="section-description">本机参考资料，未核验版本和适用性。只查已提取文字；扫描页可直接翻原页。</p>
+      <a id="local-pdf-original" class="text-link" download>下载原件</a>
+      <form id="local-pdf-search" class="local-pdf-search">
+        <label class="visually-hidden" for="local-pdf-query">在此 PDF 内查找</label>
+        <input id="local-pdf-query" type="search" maxlength="500" placeholder="在此 PDF 内查找" required>
+        <button class="secondary-button" type="submit">查找文字</button>
+      </form>
+      <p id="local-pdf-reader-status" class="inline-status" role="status"></p>
+      <div id="local-pdf-results" class="local-pdf-results"></div>
+      <pre id="local-pdf-fragment" class="local-pdf-fragment" hidden></pre>
+      <div class="local-pdf-toolbar" aria-label="本机PDF翻页与缩放">
+        <button id="local-pdf-previous" class="quiet-button" type="button">上一页</button>
+        <label>文件第 <input id="local-pdf-page" type="number" min="1" value="1" aria-label="本机PDF页码"></label>
+        <span id="local-pdf-page-total"></span>
+        <button id="local-pdf-next" class="quiet-button" type="button">下一页</button>
+        <button id="local-pdf-zoom-out" class="quiet-button" type="button" aria-label="缩小本机PDF原页">−</button>
+        <span id="local-pdf-zoom-label">100%</span>
+        <button id="local-pdf-zoom-in" class="quiet-button" type="button" aria-label="放大本机PDF原页">＋</button>
+        <button id="local-pdf-fit" class="quiet-button" type="button">适合宽度</button>
+      </div>
+      <div id="local-pdf-image" class="local-pdf-image" aria-label="本机PDF原页，可滚动查看"></div>
+    </dialog>
   </main>
 
   <template id="project-card-template">
@@ -591,6 +630,7 @@
   <script src="/assets/official-qa.js?v=2f4142627ac0" defer></script>
   <script src="/assets/qa-history.js?v=fd235107bb70" defer></script>
   <script src="/assets/workspace-backup.js?v=7782e6aa88ee" defer></script>
+  <script src="/assets/local-pdf.js?v=5db453394ddd" defer></script>
   <script src="/assets/library-inventory.js?v=e1b139018dc5" defer></script>
   <script src="/assets/official-quality.js?v=b1cf8d420492" defer></script>
   <script src="/assets/original-reader.js?v=9eb04e370d20" defer></script>

@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 from archspec.config import settings
 from archspec.database import get_session
 from archspec.documents.chunker import DocumentChunker
+from archspec.documents.local_references import build_router
 from archspec.documents.parser import DocumentParser
 from archspec.documents.repository import DocumentChunkRepository, DocumentRepository
 from archspec.documents.schemas import DocumentChunkResponse, DocumentResponse
@@ -33,6 +34,9 @@ def get_document_service(
         settings.upload_dir,
         settings.max_file_bytes,
     )
+
+
+router.include_router(build_router(get_document_service))
 
 
 @router.post("", response_model=DocumentResponse, status_code=status.HTTP_201_CREATED)

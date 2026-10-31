@@ -1,6 +1,7 @@
 """文档上传业务流程：校验、保存、解析并记录结果。"""
 
 import hashlib
+from contextlib import contextmanager
 from dataclasses import dataclass, replace
 from datetime import UTC, datetime
 from pathlib import Path
@@ -164,7 +165,13 @@ class DocumentService:
             raise DocumentUploadError(f"重新处理失败：{error}") from error
 
     def _parse_verified_original(self, record):
-        """Parse a bounded verified copy; never rewrite the uploaded original."""
+        """解析已核副本；预览与重处理共用同一原件校验入口。"""
+        with self.verified_original(record) as verified:
+            return self.parser.parse(verified, record.media_type)
+
+    @contextmanager
+    def verified_original(self, record):
+        """消费有界、逐字节核对的临时副本，原文件始终不改写。"""
         from tempfile import TemporaryDirectory
 
         from archspec.persistence.business_files import assert_runtime_file
@@ -189,7 +196,7 @@ class DocumentService:
                         target.write(block)
                 if size != record.size_bytes or digest.hexdigest() != record.sha256:
                     raise DocumentUploadError("上传原件与登记不一致，原有解析结果已保留")
-                return self.parser.parse(verified, record.media_type)
+                yield verified
         except OSError as error:
             raise DocumentUploadError("上传原件无法读取，原有解析结果已保留") from error
 
