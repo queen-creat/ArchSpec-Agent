@@ -298,7 +298,9 @@ class OfficialQueryFlow:
                 self._complete(flow_id, found)
                 return
             self._change(flow_id, step="OFFICIAL_DISCOVERY", step_state="RUNNING")
-            discovery = self.discovery.run(request["query"], topics=request["topics"], refresh=request["refresh"],
+            # 真实正文流程预核备用；旧集成提供者只有run时仍沿原接口。
+            run = getattr(self.discovery, "run_for_acquisition", self.discovery.run)
+            discovery = run(request["query"], topics=request["topics"], refresh=request["refresh"],
                 **({"region": request["region"]} if "region" in request else {}),
                 **({"public_titles": request["public_titles"]} if request.get("public_titles") else {}))
             self._change(flow_id, step="OFFICIAL_DISCOVERY", step_state="DONE", discovery_run_id=discovery["id"])

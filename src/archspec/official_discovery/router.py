@@ -79,7 +79,8 @@ def discover(
             if created:
                 background.add_task(flow.execute, ticket["query_flow"]["id"])
             return JSONResponse(ticket, status_code=202, background=background)
-        result = service.run(request.query, topics=topics, refresh=request.refresh, **region_options)
+        run = getattr(service, "run_for_acquisition", service.run) if request.auto_acquire else service.run
+        result = run(request.query, topics=topics, refresh=request.refresh, **region_options)
         # 地方页面仍是独立线索，没有FULL_TEXT附件，不能创建看似在准备正文的空任务。
         if (request.auto_acquire
                 and result.get("local_coverage") not in {"ENTRY_ONLY", "CLUES_ONLY"}

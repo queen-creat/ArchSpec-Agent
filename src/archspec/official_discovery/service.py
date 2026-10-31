@@ -131,7 +131,12 @@ class DiscoveryService:
             raise LookupError("查询记录不存在")
         return self._with_official_entries(result)
 
-    def run(self, query: str, topics=(), refresh=False, *, region=None, public_titles=()) -> dict:
+    def run_for_acquisition(self, query, topics=(), refresh=False, **options):
+        """正文主流程预核一个备用，复用原五次预算；旧普通发现保持不变。"""
+        return self.run(query, topics, refresh, _prepare_fallbacks=True, **options)
+
+    def run(self, query: str, topics=(), refresh=False, *, region=None, public_titles=(),
+            _prepare_fallbacks=False) -> dict:
         if len(query.strip()) > 500:
             raise ValueError("问题最长为 500 个字")
         plan = build_discovery_plan(query, topics, region=region, public_titles=public_titles)
@@ -140,6 +145,8 @@ class DiscoveryService:
         queries, omitted = public_plan["queries"], plan.omitted_query_count
         # 新共同目标及公平调度隔离全部旧查询缓存；原公告和正文快照完全保留。
         cache_identity = {"version": 8 if local else 23, "plan": public_plan}
+        if _prepare_fallbacks:
+            cache_identity["bounded_fallback"] = 1
         if plan.route == "UNSUPPORTED_LOCAL":
             # 只隔离地方候选新排序，旧查询档案和全国/已审核来源缓存保持。
             cache_identity["local_notice_priority"] = 1
@@ -181,11 +188,15 @@ class DiscoveryService:
                                     "请核对所需地方正式文件或补充公开规范编号；未外发原问题"],
                 }
             else:
-                result = self._discover(queries, omitted, now, plan=plan, notice_budget=notice_budget)
+                result = self._discover(queries, omitted, now, plan=plan, notice_budget=notice_budget,
+                    **({"prepare_fallbacks": True} if _prepare_fallbacks else {}))
             if self.external_provider is not None or (plan.route == "UNSUPPORTED_LOCAL" and plan.region in self.portal_roots):
                 result = self._supplement_external(result, plan, notice_budget=notice_budget)
             result["notice_attempted_count"] = notice_budget.count
             result["discovery_plan"] = public_plan
+            if _prepare_fallbacks:
+                from archspec.official_documents.fallbacks import POLICY
+                result["acquisition_policy"] = POLICY
             # 本次失败单独存记录，但不覆盖以前完整成功的查询结果。
             if (result["status"] == "FAILED" or result.get("external_status") == "FAILED") and cached:
                 result.update({"status": "STALE_CACHE", "from_cache": True,
@@ -394,7 +405,7 @@ class DiscoveryService:
         return selected
 
     def _discover(self, queries: list[dict], omitted: int, now: datetime, *, plan=None,
-                  notice_budget=None) -> dict:
+                  notice_budget=None, prepare_fallbacks=False) -> dict:
         found, searches, errors, queues = {}, [], [], []
         registered_local = plan is not None and plan.route == "REGISTERED_LOCAL"
         inspector = self.local_provider if registered_local else self.provider
@@ -419,7 +430,7 @@ class DiscoveryService:
                         current["matched_queries"].append(query["term"])
         # 明确年版且存在精确匹配的副本提示时，五次预算中留一次重新核主页面。
         # 旧公告不能耗尽这个机会；未指定年版的既有调度和总预算均不变。
-        native_limit = 4 if plan is not None and plan.requested_editions and copy_found else 5
+        native_limit = 4 if plan is not None and copy_found and (prepare_fallbacks or plan.requested_editions) else 5
 
         with ThreadPoolExecutor(max_workers=3) as executor:
             futures = ([None] * len(queries) if registered_local else
@@ -461,7 +472,7 @@ class DiscoveryService:
             # 与搜索和公告共用五次尝试，失败不释放，不把目录记录当正文。
             has_attachment = any(row.get("attachments") and row.get("target_match") == "TARGET"
                 and row.get("notice_type") in {"PUBLICATION", "OFFICIAL_COPY"} for row in results)
-            if not has_attachment and copy_found:
+            if (not has_attachment or prepare_fallbacks) and copy_found:
                 for entry in self._fair_candidates(copy_queues, copy_found):
                     found.setdefault(entry["url"], entry)
                     if not notice_budget.reserve(entry["url"]):
@@ -473,8 +484,11 @@ class DiscoveryService:
                             client=getattr(self.provider, "client", None), cache_dir=self.cache_dir)
                         notice.update(matched_queries=entry["matched_queries"],
                                       entry_origin="REVIEWED_GOVERNMENT_COPY")
-                        results.append(self._match_notice(notice, plan))
+                        matched = self._match_notice(notice, plan)
+                        results.append(matched)
                         read_successes += 1
+                        if prepare_fallbacks and matched.get("target_match") == "TARGET" and matched.get("attachments"):
+                            break  # 本轮只预核一个备用；失败和不匹配仍占原检查预算。
                     except NETWORK_ERRORS as error:
                         errors.append({"url": entry["url"],
                             "message": _network_failure(error) + "；已登记入口未当作正文"})

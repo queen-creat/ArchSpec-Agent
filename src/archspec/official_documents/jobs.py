@@ -12,6 +12,7 @@ from uuid import UUID, uuid4, uuid5
 import httpx
 
 from archspec.official_documents.download_errors import download_failure_message
+from archspec.official_documents.fallbacks import POLICY, document_key, fallback_action
 from archspec.persistence.source_write_gate import GatePaused, GateUnavailable
 
 logger = logging.getLogger(__name__)
@@ -117,6 +118,10 @@ class AcquisitionService:
         self._state_revision = None
         self._jobs = {} if state_repository is not None else self._load_all("jobs")
         self._batches = {} if state_repository is not None else self._load_all("batches")
+        if state_repository is None:
+            from archspec.official_documents.fallbacks import checked_fallback
+            if not all(checked_fallback(job, self._jobs) for job in self._jobs.values()):
+                raise ValueError("备用正文任务身份无法核对，未执行下载")
         if state_repository is not None:
             from archspec.persistence.acquisition_state import SQLAcquisitionState
             if not isinstance(state_repository, SQLAcquisitionState):
@@ -285,7 +290,7 @@ class AcquisitionService:
         if state in {"QUEUED", "READY"}:
             job.pop("failure", None)
         job.update({"state": state, "updated_at": _now()})
-        if state in {"READY", "ORIGINAL_ONLY", "FAILED", "INTERRUPTED"}:
+        if state in {"READY", "ORIGINAL_ONLY", "FAILED", "INTERRUPTED", "SKIPPED"}:
             job["finished_at"] = job["updated_at"]
         self._save("jobs", job)
 
@@ -301,7 +306,7 @@ class AcquisitionService:
                 "snapshot_id": None, "created_at": _now(), "updated_at": _now(),
                 "finished_at": None, "review_status": "PENDING_REVIEW", "reused": False}
 
-    def _enqueue(self, notice, source, refresh):
+    def _enqueue(self, notice, source, refresh, *, fallback_for=None):
         item = self._source_item(notice, source)
         if not source.get("auto_acquire"):
             return {**item, "state": "NEEDS_CONFIRMATION"}
@@ -327,7 +332,7 @@ class AcquisitionService:
         # 排队任务始终复用；失败任务不会因用户反复搜索而连续重试。
         reuse_ready = (previous and previous["state"] == "READY" and not refresh
                        and cache_current and previous["snapshot_id"] == cached["snapshot_id"])
-        if previous and (previous["state"] != "READY" or reuse_ready):
+        if previous and previous["state"] != "SKIPPED" and (previous["state"] != "READY" or reuse_ready):
             return {**item, "job_id": previous["id"], "id": previous["id"], "reused": True,
                     "cache_hit": previous["state"] == "READY"}
         pending_count = sum(job["state"] in ACTIVE_STATES for job in self._jobs.values())
@@ -336,6 +341,8 @@ class AcquisitionService:
                     "reason": "后台排队已达到上限，本附件未省略；处理结束后再次查询可加入队列"}
         job = {**item, "job_id": item["id"], "refresh": refresh,
                "state": "READY" if cache_current and not refresh else "QUEUED"}
+        if fallback_for is not None:
+            job["fallback_for"] = fallback_for
         if cached:
             job["snapshot_id"] = cached["snapshot_id"]
         if job["state"] == "READY":
@@ -372,6 +379,8 @@ class AcquisitionService:
             if self._worker_error:
                 raise RuntimeError(self._worker_error)
             items = []
+            bounded = discovery.get("acquisition_policy") == POLICY
+            primary, used_backups = {}, set()
             fresh = discovery.get("status") in {"COMPLETE", "PARTIAL"}
             for notice in discovery.get("results", []):
                 # 新合同只自动准备实际公告主规范匹配的附件；关联/未知线索仍保留在发现记录。
@@ -398,7 +407,26 @@ class AcquisitionService:
                                   "kind": "UNCONFIRMED", "state": "NO_ATTACHMENT",
                                   "reason": "这份公告没有可登记的公开附件；不代表没有规范要求"})
                 for source in sources:
-                    items.append(self._enqueue(notice, source, refresh))
+                    key = document_key(source) if bounded and source.get("kind") == "FULL_TEXT" else None
+                    parent = primary.get(key) if key else None
+                    backup = (bounded and notice.get("notice_type") == "OFFICIAL_COPY"
+                              and (key is None and bool(primary) or key is not None
+                                   and any(old[1] == key[1] for old in primary)))
+                    if bounded and key in primary and not backup:
+                        items.append({**self._source_item(notice, source), "state": "SKIPPED",
+                            "reason": "同版本正文已排队；保留公告供核对，未重复下载"})
+                        continue
+                    if backup and (parent is None or parent in used_backups):
+                        items.append({**self._source_item(notice, source), "state": "SKIPPED",
+                            "reason": "备用与已选正文版本未一致核对，或本轮已有一个备用；未自动下载"})
+                        continue
+                    item = (self._enqueue(notice, source, refresh, fallback_for=parent) if backup
+                            else self._enqueue(notice, source, refresh))
+                    items.append(item)
+                    if backup:
+                        used_backups.add(parent)
+                    elif key and item.get("job_id"):
+                        primary.setdefault(key, item["job_id"])
             batch = {"id": batch_id_for_operation(operation_id) if operation_id is not None else str(uuid4()),
                      "discovery_run_id": discovery["id"], "created_at": _now(), "items": items}
             if operation_id is not None:
@@ -493,7 +521,15 @@ class AcquisitionService:
                             self._process(job)
                     else:
                         with self._lock:
-                            pending = [job for job in self._jobs.values() if job["state"] == "QUEUED"]
+                            pending = []
+                            for candidate in self._jobs.values():
+                                if candidate["state"] != "QUEUED":
+                                    continue
+                                action = fallback_action(candidate, self._jobs)
+                                if action == "SKIP":
+                                    self._update(candidate, "SKIPPED", reason="主来源已可用或不属于可替代的下载失败；未下载备用")
+                                elif action == "RUN":
+                                    pending.append(candidate)
                             if not pending:
                                 self._wake.clear()
                                 continue

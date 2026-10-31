@@ -29,6 +29,7 @@ from sqlalchemy import (
 from sqlalchemy.exc import TimeoutError as SQLAlchemyTimeoutError
 from sqlalchemy.schema import CreateSchema
 
+from archspec.official_documents.fallbacks import checked_fallback, fallback_action
 from archspec.persistence import control_image, sql_namespace
 from archspec.persistence.control_migration import installation_scope
 
@@ -184,7 +185,7 @@ def _validate(value):
                 or job.get("job_id") != identity
                 or not isinstance(job.get("source_id"), str)
                 or re.fullmatch(r"gb55031|official-[a-f0-9]{32}", job["source_id"]) is None
-                or job.get("state") not in {"QUEUED", "DOWNLOADING", "PROCESSING", "READY", "ORIGINAL_ONLY", "FAILED", "INTERRUPTED"}
+                or job.get("state") not in {"QUEUED", "DOWNLOADING", "PROCESSING", "READY", "ORIGINAL_ONLY", "FAILED", "INTERRUPTED", "SKIPPED"}
                 or not isinstance(job.get("created_at"), str) or not job["created_at"]
                 or type(job.get("refresh")) is not bool or type(job.get("cache_hit")) is not bool
                 or (job.get("state") == "READY" and job.get("snapshot_id") is None)
@@ -200,6 +201,8 @@ def _validate(value):
                 raise AcquisitionStateUnavailable(_SAFE) from None
         if "execution" in job:
             _lease(job["execution"])
+    if not all(checked_fallback(job, jobs) for job in jobs.values()):
+        raise AcquisitionStateUnavailable(_SAFE)
     for identity, batch in batches.items():
         if (not _valid_id(identity) or not isinstance(batch, dict) or batch.get("id") != identity
                 or not isinstance(batch.get("items"), list)
@@ -393,7 +396,18 @@ class SQLAcquisitionState:
         with _transaction(self.engine, write=True, allow_capacity_wait=True) as connection:
             table, row, state = _read(connection)
             recovered = self._recover_expired(connection, state)
-            pending = [job for job in state['jobs'].values() if job['state'] == 'QUEUED']
+            pending = []
+            for candidate in state['jobs'].values():
+                if candidate['state'] != 'QUEUED':
+                    continue
+                action = fallback_action(candidate, state['jobs'])
+                if action == 'SKIP':
+                    now = datetime.fromtimestamp(self._now_us(connection)/1_000_000, UTC).isoformat()
+                    candidate.update(state='SKIPPED', updated_at=now, finished_at=now,
+                        reason='主来源已可用或不属于可替代的下载失败；未下载备用')
+                    recovered = True
+                elif action == 'RUN':
+                    pending.append(candidate)
             if not pending:
                 if recovered:
                     self._write(connection, table, row, state)
