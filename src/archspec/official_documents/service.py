@@ -1128,11 +1128,13 @@ class OfficialDocumentService:
         from archspec.official_documents.clause_units import (
             clause_indices,
             clause_label_issues,
+            reading_occurrences,
             scanned_clause_gaps,
         )
         from archspec.official_documents.document_sections import document_section, section_rows
 
         group_rows = section_rows(record)
+        occurrences = reading_occurrences(group_rows)
         same_clause = (clause_indices(group_rows, selected_index) if clause
                        else unit["indices"] if unit else [selected_index])
         # 唯一发现器扫描固定正文一次；两种兼容入口只消费同一关系草稿。
@@ -1173,6 +1175,7 @@ class OfficialDocumentService:
             fragment_section = document_section(record, row["page_start"], row["page_end"])
             fragments.append({
                 "id": f"{source_id}:{snapshot_id}:{index}", **row,
+                **({"reading_occurrence_id": occurrences[index]} if index in occurrences else {}),
                 **({"document_section": fragment_section} if fragment_section else {}),
                 "role": ("MATCH" if index == selected_index else
                          "CONTINUATION" if index in same_clause else "RELATED_CONTEXT"),
@@ -1204,6 +1207,7 @@ class OfficialDocumentService:
         return {
             "source_id": source_id, "snapshot_id": snapshot_id,
             "selected_chunk_id": chunk_id, "title": record["title"],
+            **({"reading_occurrence_id": occurrences[selected_index]} if selected_index in occurrences else {}),
             "page_count": record["page_count"],
             **({"document_section": section} if section else {}),
             "source_format": record.get("source_format", "PDF"),
@@ -1215,6 +1219,7 @@ class OfficialDocumentService:
             "table_references": table_refs,
             "clause_references": clause_refs,
             "selected_clause_coverage": {"clause_number": clause,
+                **({"reading_occurrence_id": occurrences[selected_index]} if selected_index in occurrences else {}),
                 **({key: unit[key] for key in ("reading_unit_key", "reading_unit_label")}
                    if unit else {}),
                 "expected_fragment_count": len(same_clause),

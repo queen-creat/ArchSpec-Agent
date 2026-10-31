@@ -10,7 +10,7 @@ from pathlib import Path
 from uuid import uuid4
 
 from archspec.documents.models import DocumentChunkRecord
-from archspec.official_documents.clause_units import CLAUSE, clause_runs
+from archspec.official_documents.clause_units import CLAUSE, clause_runs, reading_occurrences
 from archspec.official_documents.document_sections import (
     document_section,
     prefer_primary_clauses,
@@ -170,7 +170,9 @@ def _result(snapshot, chunk, score):
         if chunk.page_start <= page["pdf_page"] <= chunk.page_end:
             warnings.update(page["warnings"])
     section = document_section(snapshot, chunk.page_start, chunk.page_end)
+    occurrence = reading_occurrences(section_rows(snapshot)).get(int(chunk.id.rsplit(":", 1)[1]))
     return {
+        **({"reading_occurrence_id": occurrence} if occurrence is not None else {}),
         **({"document_section": section} if section else {}),
         "id": chunk.id,
         "snapshot_id": snapshot["snapshot_id"],

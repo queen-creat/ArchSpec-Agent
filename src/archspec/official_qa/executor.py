@@ -8,6 +8,7 @@ from hashlib import sha256
 from uuid import uuid4
 
 from archspec.official_discovery.local_sources import yichang_hints
+from archspec.official_documents.clause_units import physical_reading_key
 from archspec.official_documents.table_context import TABLE
 from archspec.official_qa import parallel_requirements as parallel
 from archspec.official_qa import service as qa_service
@@ -424,15 +425,14 @@ class OfficialQAExecutor:
             # 不让背景词重复、输入依据或同条重复命中占用关联阅读名额。
             covered = set().union(*(phrases(direct_statement_text(hit["text"])) for hit in primary))
             missing = terms - covered
-            primary_units = {(hit["source_id"], hit["snapshot_id"], hit["clause_number"])
-                             for hit in primary}
+            primary_units = {physical_reading_key(hit) for hit in primary}
             candidates = [hit for hit in candidates
-                          if (hit["source_id"], hit["snapshot_id"], hit["clause_number"]) not in primary_units
+                          if physical_reading_key(hit) not in primary_units
                           and has_subject_clue(hit)
                           and len(missing & phrases(direct_statement_text(hit["text"]))) >= 2]
         chosen, units = set(), set()
         for hit in candidates:
-            key = hit["source_id"], hit["snapshot_id"], hit["clause_number"]
+            key = physical_reading_key(hit)
             if key not in units:
                 chosen.add(hit["id"])
                 units.add(key)
@@ -533,7 +533,7 @@ class OfficialQAExecutor:
                 continue  # 目录仍留在原检索列表，只是不作规范事实回答。
             if local_spacing and not self.parallel_parts and not spacing_evidence(hit["text"]):
                 continue  # 日照时长与间距公式分别讨论，不改原检索排名。
-            key = (hit["source_id"], hit["snapshot_id"], hit["clause_number"] or hit["id"])
+            key = physical_reading_key(hit)
             if key in successful_reads:
                 # 同条真实重复命中仍记MATCH，但只初读一次。预算外未读到的片段不造证据。
                 existing = next((row for row in evidence if row["chunk_id"] == hit["id"]), None)
@@ -549,6 +549,9 @@ class OfficialQAExecutor:
                 continue
             if not self._source_allowed(context):
                 gaps.append("命中正文的固定档案与原问指定规范不同，未作为回答。")
+                continue
+            if hit.get("reading_occurrence_id") != context.get("reading_occurrence_id"):
+                gaps.append("候选与固定上下文的物理出现位置不同，未纳入回答。")
                 continue
             if local_question and not is_yichang_context(context):
                 gaps.append("命中正文的固定地方来源档案不完整或不一致，未作为宜昌证据。")
@@ -595,7 +598,7 @@ class OfficialQAExecutor:
                         if existing["role"] != "MATCH":
                             existing["role"] = fragment["role"]
                         existing.update({key: fragment[key] for key in
-                                         ("reading_unit_key", "reading_unit_label") if key in fragment})
+                                         ("reading_unit_key", "reading_unit_label", "reading_occurrence_id") if key in fragment})
                     continue
                 seen.add(fragment["id"])
                 evidence.append({
@@ -606,7 +609,7 @@ class OfficialQAExecutor:
                     "source_metadata": context.get("source_metadata"),
                     "source_validity": context.get("source_validity"),
                     **{key: fragment[key] for key in ("text", "clause_number", "page_start", "page_end", "role", "warnings")},
-                    **{key: fragment[key] for key in ("reading_unit_key", "reading_unit_label") if key in fragment},
+                    **{key: fragment[key] for key in ("reading_unit_key", "reading_unit_label", "reading_occurrence_id") if key in fragment},
                     "evidence_mode": "CANDIDATE_ONLY", "is_citable": False,
                     # 本轮候选未核对应关系；核心/续文亦不进入回答账本。
                     **({"role": "RELATED_CONTEXT"} if related_reading else {}),
@@ -679,7 +682,7 @@ class OfficialQAExecutor:
                     existing = next(row for row in evidence if row["chunk_id"] == fragment["id"])
                     if core:
                         existing["role"] = fragment["role"]
-                    existing.update({key: fragment[key] for key in ("reading_unit_key", "reading_unit_label") if key in fragment})
+                    existing.update({key: fragment[key] for key in ("reading_unit_key", "reading_unit_label", "reading_occurrence_id") if key in fragment})
                     continue
                 seen.add(fragment["id"])
                 evidence.append({
@@ -689,7 +692,7 @@ class OfficialQAExecutor:
                     "source_metadata": context.get("source_metadata"),
                     "source_validity": context.get("source_validity"),
                     **{key: fragment[key] for key in ("text", "clause_number", "page_start", "page_end", "role", "warnings")},
-                    **{key: fragment[key] for key in ("reading_unit_key", "reading_unit_label") if key in fragment},
+                    **{key: fragment[key] for key in ("reading_unit_key", "reading_unit_label", "reading_occurrence_id") if key in fragment},
                     "evidence_mode": "CANDIDATE_ONLY", "is_citable": False,
                 })
         if supplements:
@@ -784,6 +787,18 @@ class OfficialQAExecutor:
             self.policy.legacy_query, self.reading_contexts, evidence, priority_core_keys=priority_core_keys)
         gaps.extend(selection_gaps)
         complete_keys = complete_clause_keys(contexts, evidence)
+        occurrences = {}
+        for context in contexts:
+            if "reading_occurrence_id" in context:
+                key = (context["source_id"], context["snapshot_id"],
+                       unit_key(context["selected_clause_coverage"]))
+                occurrences.setdefault(key, set()).add(context["reading_occurrence_id"])
+        ambiguous_keys = {key for key, positions in occurrences.items() if len(positions) > 1}
+        # 当前摘录账本仍按公开条号组织。多处同号分别供读，不能拼成一个完整要求；
+        # 不凭页序猜正文/说明，也不让两处文字互补完整性或进入模型可用证据。
+        complete_keys.difference_update(ambiguous_keys)
+        if ambiguous_keys:
+            gaps.append("同号条文位于不同物理位置；本次分别保留阅读，未将两处文字合并为完整摘录。")
         for row in evidence:
             key = evidence_key(row)
             row["quote_ready"] = (row["role"] != "RELATED_CONTEXT" and key in complete_keys)
@@ -803,7 +818,8 @@ class OfficialQAExecutor:
                          for issue in context.get("selected_clause_coverage", {}).get("boundary_issues", [])]
         if clause_issues:
             result["clause_integrity_issues"] = clause_issues
-        if any(row["role"] == "MATCH" and evidence_key(row) not in complete_keys for row in evidence):
+        if any(row["role"] == "MATCH" and evidence_key(row) not in complete_keys
+               and evidence_key(row) not in ambiguous_keys for row in evidence):
             if any(context.get("selected_clause_coverage", {}).get("boundary_issues") for context in contexts):
                 gaps.append("部分片段的条文完整性或原表归属尚未核对，本次仅供阅读；请对照原页。")
             else:
@@ -821,6 +837,8 @@ class OfficialQAExecutor:
                   or (local_spacing and evidence_key(row) in spacing_keys))]
         # 同一固定阅读单元只拼接一次；所有领域策略共享核心与只读上下文。
         accepted, rejected = self._accepted_unit_keys(usable, conditions)
+        accepted.difference_update(ambiguous_keys)
+        rejected.update(ambiguous_keys)
         # 新增的关联单元即使拼齐后碰巧满足词组规则，也不能因此变成回答核心，
         # 或以RELATED_CONTEXT身份进入整理器可用账本。
         related_keys = {(context["source_id"], context["snapshot_id"],

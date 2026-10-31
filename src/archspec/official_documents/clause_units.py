@@ -153,3 +153,25 @@ def scanned_clause_gaps(record, indices):
                         "message": "扫描正文的相邻条号存在缺口，不能排除漏行或跨条串接；保留文字供原页核对，不作为完整摘录。"})
             previous = number, parts
     return findings
+
+
+def reading_occurrences(rows):
+    """只为同号的不同连续位置派生标记；原快照、条号和文本均不改。"""
+    runs = clause_runs(rows)
+    starts = {}
+    for index, run in runs.items():
+        starts.setdefault(rows[index]["clause_number"], set()).add(run[0])
+    return {index: run[0] for index, run in runs.items()
+            if len(starts[rows[index]["clause_number"]]) > 1}
+
+
+def physical_reading_key(row):
+    """候选初读按固定物理位置去重；唯一条文和旧内部夹具保留兼容键。"""
+    key = (row["source_id"], row["snapshot_id"],
+           row.get("reading_unit_key") or row.get("clause_number") or row.get("id"))
+    if "reading_occurrence_id" not in row:
+        return key
+    occurrence = row["reading_occurrence_id"]
+    if type(occurrence) is not int or not 0 <= occurrence <= 999999:
+        raise ValueError("固定条文的物理出现位置无效")
+    return (*key, occurrence)
