@@ -616,7 +616,25 @@ class LookupPlan:
     @property
     def retrieval_query(self) -> str:
         """只消费共同计划已确认的唯一条号，不从多条号中另猜一个目标。"""
-        return self.question_plan.explicit_clause_number or self.legacy_retrieval_query
+        if self.question_plan.explicit_clause_number:
+            return self.question_plan.explicit_clause_number
+        query = self.legacy_retrieval_query
+        # 明确书目已由同一计划约束来源；正文排序不再靠反复出现的书名取胜。
+        # 原问、RAW排名及条件政策均不改；只在未知主题查原文时分离来源与正文词。
+        if (self.question_plan.topic == "UNKNOWN"
+                and self.question_plan.operation == "REFERENCE_LOOKUP"
+                and self.question_plan.explicit_source_scope and self.discovery_plan
+                and not self.parallel_queries):
+            targets = self.discovery_plan.explicit_targets(self.original_query)
+            body_query = query
+            for kind, value in targets:
+                if kind == "TITLE":
+                    body_query = re.sub(re.escape(value) + r"(?:中|里|内)?(?:的)?", " ", body_query)
+                elif kind == "CODE":
+                    body_query = PUBLIC_CODE.sub(" ", body_query)
+            if targets and _phrases(body_query):
+                return body_query.strip()
+        return query
 
     @property
     def legacy_retrieval_query(self) -> str:

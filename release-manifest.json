@@ -103,7 +103,7 @@
     "src/archspec/official_documents/jobs.py": "53fdafcc3241fe934fd9851315b52096d43adb1f9b994e6c22d5a8af3e1a04c6",
     "src/archspec/official_documents/local_policy.py": "d66a3afe534d866b00308153c9c79a6f7627a2306454bd64af705521edba0c55",
     "src/archspec/official_documents/local_semantic.py": "b1958def40595d7f39bcea0184608c386deeadd4127ef72bd2e6476d0861aacb",
-    "src/archspec/official_documents/lookup.py": "f31d661cbef34a2570f493660b4d95c347a809f45ef09be190a58ac4f19d9f36",
+    "src/archspec/official_documents/lookup.py": "34b474474cd99a896488db23a25b5d7ef8acc4918e13c2877c5c7c28799c050e",
     "src/archspec/official_documents/metadata_filter.py": "cd90c7ad7aeccb9ef1f372ec80e962227500bdf921a9aa13b4926f6b03ee7784",
     "src/archspec/official_documents/named_units.py": "b7c1824ddeddd122f3dcc84878b8bc0694ddb9223b278faabe9660bb404bcc3b",
     "src/archspec/official_documents/native_text.py": "0102f24342d45e9141b3918946bd1738aa8eb05769057cd05ed99dd0f31e4f81",
