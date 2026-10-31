@@ -40,6 +40,7 @@ def batch_id_for_operation(operation_id):
 
 def _failure_for(error):
     """只有已知安全异常类可细分；其它类型不读取动态code或异常原文。"""
+    from archspec.official_documents.download_errors import AttachmentInputRejected
     from archspec.official_documents.processing_cache import ProcessingLimited
     from archspec.persistence.acquisition_state import validated_failure
     from archspec.persistence.business_files import BusinessFilesUnavailable
@@ -47,7 +48,11 @@ def _failure_for(error):
     from archspec.persistence.snapshot_catalog import SnapshotCatalogUnavailable
     from archspec.persistence.source_registry import SourceRegistryUnavailable
 
-    if isinstance(error, BusinessFilesUnavailable):
+    # 只认下载器签发的确切类型，不解析错误文案或任意异常的同名code属性。
+    if type(error) is AttachmentInputRejected:
+        code = {"SIZE_LIMIT": "ATTACHMENT_SIZE_LIMIT", "INVALID_PDF": "ATTACHMENT_INVALID_PDF"}.get(
+            error.code, "UNEXPECTED")
+    elif isinstance(error, BusinessFilesUnavailable):
         try:
             code = BusinessFilesUnavailable(code=error.code).code
         except Exception:  # noqa: BLE001 - 异常属性也可能损坏，仍只签固定兜底类别。

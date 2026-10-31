@@ -15,3 +15,18 @@ def download_failure_message(error: httpx.HTTPError) -> str:
     else:
         reason = "官方附件下载通信失败"
     return f"{reason}，本次未取得完整文件；可稍后重试，已有成功缓存保留"
+
+
+class AttachmentInputRejected(ValueError):
+    """仅由下载边界签发的固定原因；不保存网址、响应正文或凭据。"""
+
+    def __init__(self, code, *, max_bytes=None):
+        if code == "SIZE_LIMIT" and type(max_bytes) is int and max_bytes in (
+                30 * 1024 * 1024, 80 * 1024 * 1024):
+            message = f"规范附件超过{max_bytes // (1024 * 1024)}MB限制"
+        elif code == "INVALID_PDF":
+            message = "官方附件响应不是有效PDF"
+        else:
+            raise ValueError("附件下载原因未登记")
+        self.code = code
+        super().__init__(message)

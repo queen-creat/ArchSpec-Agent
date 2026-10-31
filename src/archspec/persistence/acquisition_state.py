@@ -80,7 +80,7 @@ class AcquisitionLeaseLost(RuntimeError):
 
 
 _FAILURE_CODES = frozenset({"SERVICE_RUNTIME", "SNAPSHOT_CATALOG", "SOURCE_REGISTRY", "UNEXPECTED",
-                            "PROCESSING_LIMITED"})
+                            "PROCESSING_LIMITED", "ATTACHMENT_SIZE_LIMIT", "ATTACHMENT_INVALID_PDF"})
 
 
 # 历史故障只保存这些公开代码位置；不接受路径、动态类名、消息或SQL。

@@ -10,14 +10,14 @@ from urllib.parse import urljoin, urlsplit
 
 import httpx
 
-from archspec.official_http import official_http_client
-
+from archspec.official_documents.download_errors import AttachmentInputRejected
 from archspec.official_documents.government_urls import (
     GATEWAY_PATH,
     validate_gateway_download,
     validate_government_pair,
 )
 from archspec.official_documents.local_policy import ATTACHMENTS, reviewed_attachment
+from archspec.official_http import official_http_client
 from archspec.standard_catalog.provider import validate_official_url
 
 MOHURD_HOSTS = {"www.mohurd.gov.cn", "mohurd.gov.cn"}
@@ -86,7 +86,7 @@ def _pdf_response(url, client, max_bytes, *, page_url=None):
                 response.raise_for_status()
                 length = response.headers.get("content-length", "")
                 if length.isdigit() and int(length) > max_bytes:
-                    raise ValueError(f"规范附件超过{max_bytes // (1024 * 1024)}MB限制")
+                    raise AttachmentInputRejected("SIZE_LIMIT", max_bytes=max_bytes)
                 yield response
                 return
     finally:
@@ -101,14 +101,14 @@ def _pdf_parts(response, max_bytes):
     for part in response.iter_bytes(chunk_size=64 * 1024):
         if first:
             if not part.startswith(b"%PDF-"):
-                raise ValueError("官方附件响应不是有效PDF")
+                raise AttachmentInputRejected("INVALID_PDF")
             first = False
         received += len(part)
         if received > max_bytes:
-            raise ValueError(f"规范附件超过{max_bytes // (1024 * 1024)}MB限制")
+            raise AttachmentInputRejected("SIZE_LIMIT", max_bytes=max_bytes)
         yield part
     if first:
-        raise ValueError("官方附件响应不是有效PDF")
+        raise AttachmentInputRejected("INVALID_PDF")
 
 
 def download_pdf(url: str, client: httpx.Client | None = None) -> bytes:
