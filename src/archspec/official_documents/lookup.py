@@ -461,6 +461,26 @@ def _reading_source_matches(prepared, item):
                 item.get("title", ""), prepared.question_plan.conditions)
 
 
+def _reading_hint_matches(prepared, snapshot, role, term):
+    """术语只辅助同一主陈述，原问的空间/用途范围不能随同义词转换丢失。"""
+    from archspec.official_documents.reading_scope import focus_prefix_context
+
+    statement = _compact(role)
+    words = term.split()
+    if not all(word in statement for word in words):
+        return False
+    focus = prepared.question_plan.query_focus
+    contexts = focus.get("prefix_context", ()) if focus else ()
+    if not contexts:
+        return True
+    title = _compact(snapshot.get("title", ""))
+    if not all(value in statement or value in title for value in contexts):
+        return False
+    # 中性主句可沿既有规则借固定书名范围；明确异类前缀不能借书名覆盖。
+    prefixes = focus_prefix_context(statement, words, clause=True)
+    return all(any(prefix in value for value in contexts) for prefix in prefixes)
+
+
 def _preferred_reading_indices(prepared, snapshot):
     """只为读取择取完整同条主题信号；不签发完整性、适用性或引用资格。"""
     from archspec.official_documents.clause_units import clause_runs
@@ -491,8 +511,8 @@ def _preferred_reading_indices(prepared, snapshot):
         # 术语只在同一陈述内共同出现才影响阅读顺序，不能跨对象借词。
         original = "\n".join(row["text"] for _, row in members)
         if terms and any(
-                all(word in _compact(statement) for word in term.split())
-                for _, statement in direct_statement_pairs(original) for term in terms):
+                _reading_hint_matches(prepared, snapshot, role, term)
+                for role, _ in direct_statement_pairs(original) for term in terms):
             preferred.update(index for index, _ in members)
         text = _compact("\n".join(row["text"] for _, row in members))
         if _operation_matches(prepared.policy, prepared.question_plan, text, members[0][1].get("clause_number"), source_title=snapshot.get("title", "")):
