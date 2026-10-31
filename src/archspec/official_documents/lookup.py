@@ -454,7 +454,11 @@ def _operation_matches(policy, question, text, number, *, source_title=""):
             if height_use_category(words[0])
         ]
     return any(
-        policy.matches_reading_question(text, scope, source_title=source_title) and policy.accept_full_clause(text, scope, source_title=source_title)
+        policy.matches_reading_question(text, scope, source_title=source_title)
+        # 计算主题的相关正文仍可读；具体原问是否被回答由完整单元政策核验。
+        # 不因拒绝摘录删除原文入口，也不把本次候选标记当作答案资格。
+        and (question.operation == "CALCULATION_RULES"
+             or policy.accept_full_clause(text, scope, source_title=source_title))
         for scope in variants
     )
 

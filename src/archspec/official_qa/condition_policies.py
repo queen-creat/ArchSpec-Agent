@@ -6,6 +6,7 @@ from dataclasses import dataclass
 
 from archspec.official_documents.clause_links import BODY
 from archspec.official_documents.reference_relevance import (
+    QUESTION_FILLERS,
     measurement_statement,
     reference_matches,
     subject_query,
@@ -236,6 +237,16 @@ class ConditionPolicy:
         # 专题规则与已绑定原问焦点取交集；净高/高度等主题名不等于对象已核对。
         if self.query_focus is not None and not self.matches_query_focus(text, source_title=source_title):
             return False
+        # 计算专题不能抹掉原问中的具体对象、属性和取值口径；
+        # 复用同一原问相关性合同，不以“间距”等主题词授权任意计算段。
+        if self.operation == "CALCULATION_RULES":
+            query = self.reference_query or self.original_query
+            # 纯主题询问仍沿既有分支/附录合同阅读；实际子项未必重复整个主题名。
+            # 只移除主题本身及提问框架，剩余原字代表具体要求，不列城市或设施例外。
+            detail = QUESTION_FILLERS.sub("", query)
+            detail = re.sub(r"建筑|日照|间距|计算|公式|系数|[及、，,。；;：:\s]", "", detail)
+            if detail and not self._reference_matches(text, conditions, source_title=source_title):
+                return False
         # 查出处和具体取值共用主题边界；只有取值操作才触发必要条件。
         if self.topic == "DAYLIGHT_COEFFICIENT":
             return daylight_text_matches(conditions, text)
