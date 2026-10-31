@@ -31,7 +31,10 @@ ANNEX_TABLE_CAPTION = re.compile(
 )
 LEVEL_ONE_PATTERN = re.compile(r"^[一二三四五六七八九十百]+、\s*.+$")
 LEVEL_TWO_PATTERN = re.compile(r"^（[一二三四五六七八九十百]+）\s*.+$")
-NUMERIC_HEADING = re.compile(r"^(?P<number>\d+(?:\.\d+)?)[ \t]+(?P<title>\S.*)$")
+# OCR常把数字与中文标题间的空格丢失；无空格候选须经后续两个子条号确认。
+NUMERIC_HEADING = re.compile(
+    r"^(?P<number>\d+(?:\.\d+)?)(?P<separator>[ \t]+|(?=[\u4e00-\u9fff]))(?P<title>\S.*)$"
+)
 STAGE_PATTERN = re.compile(
     r"^(?P<title>第[一二三四五六七八九十百]+阶段)"
     r"(?:[（(][^）)]*[）)])?\s*[:：]?\s*(?P<body>.*)$"
@@ -253,7 +256,9 @@ class DocumentChunker:
         if (len(title) > 60 or any(mark in title for mark in ("。", "；", "，", "…"))
                 or re.match(r"(?:倍|米|平方米|mm\b|cm\b|m\b|%|℃|°)", title, re.IGNORECASE)):
             return False
-        for block in following[:3]:
+        # 无空格候选也可能是数量或枚举行，不凭紧邻一个条号就升级为标题。
+        nearby = following[:3] if match["separator"] else ()
+        for block in nearby:
             text = block.text.strip()
             # 紧邻的章节或页脚可跳过，普通正文不能跨过去猜章节。
             clause = CLAUSE_PATTERN.match(text)
@@ -271,9 +276,13 @@ class DocumentChunker:
             if clause is None:
                 continue
             number = clause["number"]
-            if (not number.startswith(prefix) or not number[len(prefix):].isdigit()):
+            if not number.startswith(prefix):
                 return False
-            value = int(number[len(prefix):])
+            suffix = number[len(prefix):].split(".")
+            if not all(part.isdigit() for part in suffix):
+                return False
+            # 章的子条可含节号，按完整数字路径递增，不能把6.1.2硬当作6.12。
+            value = tuple(int(part) for part in suffix)
             if children and value <= children[-1]:
                 return False
             children.append(value)

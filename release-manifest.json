@@ -36,7 +36,7 @@
     "src/archspec/demo_seed.py": "28d4bc846c11072bd672e2ccc9634d2a91da8a38bef47c985802887b18c2c04d",
     "src/archspec/deployment.py": "3ebbdebf46c15a156b3506534e53e82fb5a37963c11902e1f13b2617cd0686bc",
     "src/archspec/documents/__init__.py": "d44f7e2724242bc62f86d63198991770e1b968e8dc46bdc4d59a81fb60923c0b",
-    "src/archspec/documents/chunker.py": "b7ee57fe9b207f296d4a7e0192c37971ae010aa182fafd002d82afb232b03b9d",
+    "src/archspec/documents/chunker.py": "9aa9527cf47070b1a57b9c51d5405d278cbdddfce54f7d8b29e42e8ed8f4ec0b",
     "src/archspec/documents/local_references.py": "944e5611079b48234db5d6a0a03756e6c5c398cba62d3854031eabd1e38979a8",
     "src/archspec/documents/models.py": "812f9330e1cbe29388c0f05527f8683b481ac9ebba369c7bd86be7011d4dc058",
     "src/archspec/documents/parser.py": "141947b1492c5989350d7aa79831a439e78156889e50858378c73f040495b5f1",
