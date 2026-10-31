@@ -9,6 +9,7 @@ from urllib.parse import unquote, urljoin, urlsplit
 
 import pymupdf
 
+from archspec.official_discovery.editions import bind_editions, source_editions, without_editions
 from archspec.official_discovery.local_sources import _LocalPageParser
 from archspec.official_discovery.plan import non_rule_notice_title
 from archspec.official_discovery.provider import MAX_BYTES
@@ -156,6 +157,18 @@ def _navigation(page, url, plan, raw):
             "text_sha256": hashlib.sha256(raw).hexdigest(), "body_status": "NOT_ACQUIRED"}
 
 
+def _primary_edition_title(code, title, heading):
+    """只保留紧邻主编号/书名的明确年版，复用请求绑定合同，不从正文年份猜测。"""
+    spans = [(m.start(), m.end(), (("CODE", code),)) for m in PUBLIC_CODE.finditer(heading)]
+    spans.extend((m.start(), m.end(), (("TITLE", title),))
+                 for m in re.finditer(re.escape(title), heading))
+    years = {year for kind, value, year in bind_editions(heading, spans)
+             if (kind, value) in {("CODE", code), ("TITLE", title)}}
+    if len(years) > 1:
+        raise ValueError("政府主标题年版声明冲突，未选择其中一个版本")
+    return f"{title}（{next(iter(years))}年版）" if years else title
+
+
 def _separate_national_declaration(raw, headings):
     """只核已定位全文开头的独立书名/完整编号声明，不扫摘要、引用或页脚。"""
     from archspec.official_documents.web_body import _dom_article_text
@@ -289,9 +302,11 @@ def inspect_government_copy(clue, plan, *, client=None, capture_original=None, c
                     continue
                 title = next((t for t in sorted(PUBLIC_TITLES, key=len, reverse=True) if t in heading), None)
                 title = title or PUBLIC_CODE.sub("", heading).strip(" 《》()（）-—")
+                if title:
+                    title = _primary_edition_title(codes[0], title, heading)
                 if title and plan.match_source(codes[0], title) == "TARGET":
-                    matches.append((codes[0], title))
-            matches = list(dict.fromkeys(matches))
+                    matches.append((codes[0], title, heading))
+            matches = list({(code, title): heading for code, title, heading in matches}.items())
             declaration = _separate_national_declaration(raw, headings)
             heading_codes = {code for heading in headings for code in extract_public_codes(heading)}
             if declaration and heading_codes and (heading_codes != {declaration[0]}):
@@ -301,8 +316,7 @@ def inspect_government_copy(clue, plan, *, client=None, capture_original=None, c
                 code, title, identity_excerpt = declaration
                 observed_heading = title
             elif len(matches) == 1:
-                code, title = matches[0]
-                observed_heading = headings[0] or headings[1]
+                (code, title), observed_heading = matches[0]
             else:
                 raise ValueError("政府发布页主规范暂无法核对，保留搜索线索")
         attachments = []
@@ -310,7 +324,10 @@ def inspect_government_copy(clue, plan, *, client=None, capture_original=None, c
         for link in page.links:
             target = urljoin(url, link.get("href", ""))
             label = link.get("title") or link.get("text", "")
-            if compact(title) not in compact(label):
+            if compact(without_editions(title)) not in compact(without_editions(label)):
+                continue
+            editions, attachment_editions = source_editions(code, title), source_editions(None, label)
+            if editions and attachment_editions and editions != attachment_editions:
                 continue
             other_codes = extract_public_codes(label)
             if other_codes and code not in other_codes:

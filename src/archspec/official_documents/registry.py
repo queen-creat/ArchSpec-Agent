@@ -69,7 +69,13 @@ def _classify(title: str, standard_title: str, notice_type: str, *, renamed_titl
     label = _compact(title)
     if "废止" in label or "强制性条文清单" in label:
         return "WITHDRAWAL", False, "废止条文或旧规范清单，不是完整规范正文"
-    matched = bool(standard_title and _compact(standard_title) in label)
+    from archspec.official_discovery.editions import source_editions, without_editions
+
+    # 年版来自已核主字段；附件标签可省略年版，但不能显式指向另一年版。
+    expected, observed = source_editions(None, standard_title), source_editions(None, title)
+    matched = bool(standard_title and _compact(without_editions(standard_title))
+                   in _compact(without_editions(title))
+                   and not (expected and observed and expected != observed))
     # 更名只帮助已核修订附件对应原公告，不把修订资料升级成完整规范。
     if notice_type == "REVISION" and renamed_title:
         matched = matched or _compact(renamed_title) in label
