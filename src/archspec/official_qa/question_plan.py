@@ -360,13 +360,20 @@ def _literal_reference_focus(query):
         return None
     subject, attribute = match["subject"], match["attribute"]
     if (subject.endswith(("规范", "标准", "规定", "要求"))
-            or re.search(r"[和与及或、]|多少|计算|怎么算|是否|能否|可以|允许|不得|不应|不能", subject + attribute)):
+            or re.search(r"[和与及或、]", subject)
+            or re.search(r"或|多少|计算|怎么算|是否|能否|可以|允许|不得|不应|不能", attribute)):
+        return None
+    # 同一对象明确并列的属性逐项保留；不把不同对象合并，也不跨句拼属性。
+    attributes = re.split(r"[和与及、]", attribute)
+    if not 1 <= len(attributes) <= 3 or any(not 2 <= len(value) <= 32 for value in attributes):
         return None
     # 明确内/外方位修饰的是后面的对象，不把位置当主体或把对象当属性。
     # 位置原字由共同prefix_context绑定，后续仍须在同一陈述中核对。
     if subject.endswith(("内", "外")):
+        if len(attributes) != 1:
+            return None  # 空间内并列的是多个对象，不能当作单对象的多个属性。
         return {"subjects": [attribute], "attributes": [], "actions": []}
-    return {"subjects": [subject], "attributes": [attribute], "actions": []}
+    return {"subjects": [subject], "attributes": attributes, "actions": []}
 
 
 def _literal_indexed_reference_focus(query):
@@ -455,7 +462,8 @@ class LocalPlanner:
             # 明确问量法不等于问主题限值；缺少该专题量法政策时走通用量法核对。
             # 原对象原字保留，不推定数值、工程条件或另一个专业主题。
             topic, operation, focus = "UNKNOWN", "MEASUREMENT_METHOD", None
-        elif topic == "UNKNOWN" and allow_reference_focus:
+        elif allow_reference_focus and operation == "REFERENCE_LOOKUP" and topic != "EXACT_REFERENCE":
+            # 专题只说明所查性能，不能替代原问明确的对象/属性范围。
             literal = _literal_reference_focus(query) or _literal_indexed_reference_focus(query)
         return ModelSemanticProposal(topic=topic, operation=operation, focus=focus,
             understanding="UNCERTAIN" if topic == "UNKNOWN" and literal is None else "CLEAR",
@@ -480,17 +488,27 @@ def bind_literal_model_intent(proposal, query, public_conditions):
         return bound, {"plan_resolution": {"rule": "FACILITY_BEFORE_PERFORMANCE_TOPIC_V1",
             "proposed_topic": proposal.topic, "effective_topic": bound.topic,
             "proposed_operation": proposal.operation, "operation": bound.operation}}
+    literal = LocalPlanner().propose(query, public_conditions)
     if (proposal.topic != "UNKNOWN" and proposal.operation in {"CONDITIONED_LIMIT", "CALCULATION_RULES"}
             and "REFERENCE_LOOKUP" in TOPIC_OPERATIONS[proposal.topic]
             and explicit_reference_lookup(query)):
         payload = proposal.semantic_payload()
         payload["operation"] = "REFERENCE_LOOKUP"
+        if literal["operation"] == "REFERENCE_LOOKUP" and literal.get("query_focus") is not None:
+            payload["query_focus"] = literal["query_focus"]
         bound = ModelSemanticProposal.model_validate(payload)
         return bound, {"plan_resolution": {"rule": "EXPLICIT_REFERENCE_LOOKUP_V1",
             "proposed_topic": proposal.topic, "effective_topic": bound.topic,
             "proposed_operation": proposal.operation, "operation": bound.operation}}
-    literal = LocalPlanner().propose(query, public_conditions)
     focus = literal.get("query_focus")
+    if (focus is not None and literal["topic"] != "UNKNOWN"
+            and literal["operation"] == proposal.operation == "REFERENCE_LOOKUP"):
+        payload = proposal.semantic_payload()
+        payload["query_focus"] = focus
+        bound = ModelSemanticProposal.model_validate(payload)
+        return bound, {"plan_resolution": {"rule": "LITERAL_REFERENCE_SCOPE_V1",
+            "proposed_topic": proposal.topic, "effective_topic": bound.topic,
+            "proposed_operation": proposal.operation, "operation": bound.operation}}
     if literal["topic"] != "UNKNOWN" or focus is None:
         return proposal, {}
     payload, notes = proposal.semantic_payload(), {}
