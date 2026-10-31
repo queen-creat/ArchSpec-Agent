@@ -11,7 +11,9 @@ from pydantic import AfterValidator, BaseModel, ConfigDict, Field, field_validat
 from archspec.official_documents.clause_units import ARTICLE, CLAUSE
 from archspec.official_qa.condition_checks import query_conditions
 from archspec.official_qa.daylight_conditions import (
+    daylight_facility_reference,
     daylight_query_conditions,
+    daylight_topic_question,
     daylight_value_question,
 )
 from archspec.official_qa.garage_conditions import garage_query_conditions
@@ -439,7 +441,7 @@ class LocalPlanner:
             topic, operation = "SUNLIGHT_SPACING", "CALCULATION_RULES"
         elif "日照" in query:
             topic = "SUNLIGHT_DURATION"
-        elif "采光" in query:
+        elif daylight_topic_question(query):
             topic = "DAYLIGHT_COEFFICIENT"
             if daylight_value_question(query):
                 operation = "CONDITIONED_LIMIT"
@@ -465,6 +467,19 @@ def bind_literal_model_intent(proposal, query, public_conditions):
     """合并原问明确结构时同时绑定对象与操作；原模型提案和恢复记录不回写。"""
     if proposal.understanding != "CLEAR":
         return proposal, {}
+    if proposal.topic == "DAYLIGHT_COEFFICIENT" and daylight_facility_reference(query):
+        # 模型与保存的语义也必须核所问范围；设施名不能授权采光系数专题。
+        # 通用对象/属性角色仍由原问原字校验，不引入新工程事实或第二次理解。
+        local = LocalPlanner().propose(query, public_conditions)
+        payload = proposal.semantic_payload()
+        payload.update(topic=local["topic"], operation=local["operation"], focus=local["focus"],
+                       local_reading_terms=[], local_reading_aliases=[], public_search_titles=[])
+        if local.get("query_focus") is not None:
+            payload["query_focus"] = local["query_focus"]
+        bound = ModelSemanticProposal.model_validate(payload)
+        return bound, {"plan_resolution": {"rule": "FACILITY_BEFORE_PERFORMANCE_TOPIC_V1",
+            "proposed_topic": proposal.topic, "effective_topic": bound.topic,
+            "proposed_operation": proposal.operation, "operation": bound.operation}}
     if (proposal.topic != "UNKNOWN" and proposal.operation in {"CONDITIONED_LIMIT", "CALCULATION_RULES"}
             and "REFERENCE_LOOKUP" in TOPIC_OPERATIONS[proposal.topic]
             and explicit_reference_lookup(query)):
