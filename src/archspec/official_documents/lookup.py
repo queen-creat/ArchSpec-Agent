@@ -553,6 +553,15 @@ def _preferred_reading_indices(prepared, snapshot, *, role_indices=None):
     if classification_subject(prepared.question_plan.search_query) is not None:
         return classification_indices(prepared.question_plan.search_query, snapshot)
     rows = snapshot["chunks"]
+    if prepared.policy.calculation_detail():
+        # 具体原问已有直接对应片段时，不能让宽泛主题的高词频把它挤出阅读。
+        # 无条号也可作阅读信号；这不批准完整性、引用或工程适用性。
+        specific = {index for index, row in enumerate(rows)
+                    if not DIRECTORY.search(row["text"])
+                    and prepared.policy._reference_matches(row["text"], prepared.question_plan.conditions,
+                                                           source_title=snapshot.get("title", ""))}
+        if specific:
+            return specific
     runs = clause_runs(rows)
     groups = defaultdict(list)
     for index, row in enumerate(rows):

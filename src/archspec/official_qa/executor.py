@@ -386,10 +386,10 @@ class OfficialQAExecutor:
 
     def _unverified_reading_candidates(self, searched, conditions):
         """只保留本次前五里的两个固定正文入口，不证明问题对应关系。"""
-        if (self.plan.topic != "UNKNOWN"
-                or self.plan.operation not in {"REFERENCE_LOOKUP", "MEASUREMENT_METHOD"}
-                or self.parallel_parts or self.plan.explicit_clause_numbers):
+        if (self.plan.operation not in {"REFERENCE_LOOKUP", "MEASUREMENT_METHOD", "CALCULATION_RULES"}
+                or self.plan.explicit_clause_numbers):
             return set()
+        ordinary = self.plan.topic == "UNKNOWN" and not self.parallel_parts
         from archspec.official_documents.reading_scope import (
             direct_statement_text,
             main_subject_match,
@@ -406,9 +406,12 @@ class OfficialQAExecutor:
                       and self.policy.matches_source_title(hit.get("title", ""), conditions)
                       # 无条号片段只扩展原有的关联阅读入口；不猜条号或完整性。
                       # 点线目录仍不进入正文阅读，未知片段不因此变成回答核心。
-                      and (self.policy.is_body(hit["text"], hit.get("clause_number"))
+                      and (ordinary and self.policy.is_body(hit["text"], hit.get("clause_number"))
                            or hit.get("clause_number") is None
-                           and not re.search(r"[.…⋯·]{2,}\s*\d", hit["text"]))
+                           and not re.search(r"[.…⋯·]{2,}\s*\d", hit["text"])
+                           # 原有可核命名间距单元沿自己的严格正文路径，不降成关联。
+                           and not (self.policy.local_spacing and re.match(
+                               r"^[（(][一二三四五六七八九十百]+[）)]", hit["text"].strip())))
                       and len(terms & phrases(direct_statement_text(hit["text"]))) >= 2]
         preferred = set(searched.get("candidate_selection", {}).get("preferred_ids", ()))
         primary = [hit for hit in searched["results"] if self._source_allowed(hit)

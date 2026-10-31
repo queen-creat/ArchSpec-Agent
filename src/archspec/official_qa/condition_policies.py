@@ -232,6 +232,14 @@ class ConditionPolicy:
         return reference_matches(self.reference_query or self.original_query, text, conditions,
                                  scope_context=supported)
 
+    def calculation_detail(self):
+        """只标识原问在计算主题之外仍有具体文字；不猜对象或补充条件。"""
+        if self.operation != "CALCULATION_RULES":
+            return ""
+        query = self.reference_query or self.original_query
+        detail = QUESTION_FILLERS.sub("", query)
+        return re.sub(r"建筑|日照|间距|计算|公式|系数|[及、，,。；;：:\s]", "", detail)
+
     def accept_full_clause(self, text: str, conditions: Mapping, *, source_title="") -> bool:
         """完整文字由bundle拼接一次；不借邻接用途、否定词或半片谓词证明。"""
         # 专题规则与已绑定原问焦点取交集；净高/高度等主题名不等于对象已核对。
@@ -239,14 +247,9 @@ class ConditionPolicy:
             return False
         # 计算专题不能抹掉原问中的具体对象、属性和取值口径；
         # 复用同一原问相关性合同，不以“间距”等主题词授权任意计算段。
-        if self.operation == "CALCULATION_RULES":
-            query = self.reference_query or self.original_query
-            # 纯主题询问仍沿既有分支/附录合同阅读；实际子项未必重复整个主题名。
-            # 只移除主题本身及提问框架，剩余原字代表具体要求，不列城市或设施例外。
-            detail = QUESTION_FILLERS.sub("", query)
-            detail = re.sub(r"建筑|日照|间距|计算|公式|系数|[及、，,。；;：:\s]", "", detail)
-            if detail and not self._reference_matches(text, conditions, source_title=source_title):
-                return False
+        # 纯主题仍沿既有分支合同；具体原字与阅读优先级共用同一判定。
+        if self.calculation_detail() and not self._reference_matches(text, conditions, source_title=source_title):
+            return False
         # 查出处和具体取值共用主题边界；只有取值操作才触发必要条件。
         if self.topic == "DAYLIGHT_COEFFICIENT":
             return daylight_text_matches(conditions, text)
