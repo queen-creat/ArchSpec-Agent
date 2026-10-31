@@ -486,7 +486,10 @@ def _role_reading_indices(prepared, snapshot):
     from dataclasses import replace
 
     from archspec.official_documents.clause_units import clause_runs
-    from archspec.official_documents.reading_scope import explicitly_excluded
+    from archspec.official_documents.reading_scope import (
+        explicitly_excluded,
+        structural_reading_match,
+    )
 
     aliases = prepared.question_plan.local_reading_aliases
     if (not aliases or prepared.question_plan.explicit_clause_numbers
@@ -514,7 +517,8 @@ def _role_reading_indices(prepared, snapshot):
         text = "\n".join(row["text"] for _, row in members)
         if (policy.is_body(text, members[0][1].get("clause_number"))
                 and not explicitly_excluded(prepared.original_query, text)
-                and policy.matches_query_focus(text, source_title=snapshot.get("title", ""))):
+                and (policy.matches_query_focus(text, source_title=snapshot.get("title", ""))
+                     or structural_reading_match(text, policy, source_title=snapshot.get("title", "")))):
             chosen.update(index for index, _ in members)
     return chosen
 

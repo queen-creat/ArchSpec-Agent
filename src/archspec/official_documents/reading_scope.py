@@ -163,8 +163,8 @@ def main_subject_match(text, subject):
     return subject in re.sub(r"[（(]([\u3400-\u9fff]{2,12})[）)]", annotation, text)
 
 
-def numbered_statement_pairs(text):
-    """读取首组完整连续编号；各项各句独立核角色，不以句号结束整组。"""
+def _numbered_item_pairs(text):
+    """共用固定编号项边界；角色视图与原字始终成对，不补缺号。"""
     from archspec.documents.chunker import clause_start
 
     role = direct_statement_text(text)
@@ -184,10 +184,17 @@ def numbered_statement_pairs(text):
     # 不能跨缺号推断仍为完整分项，也不能把正文后的另一组编号并入。
     if not markers or [int(marker[1]) for marker in markers] != list(range(1, len(markers) + 1)):
         return ()
+    return tuple((body[marker.end():markers[index + 1].start()
+                             if index + 1 < len(markers) else len(body)],
+                  raw_body[marker.end():markers[index + 1].start()
+                             if index + 1 < len(markers) else len(body)])
+                 for index, marker in enumerate(markers))
+
+
+def numbered_statement_pairs(text):
+    """读取首组完整连续编号；各项各句独立核角色，不以句号结束整组。"""
     pairs = []
-    for index, marker in enumerate(markers):
-        end = markers[index + 1].start() if index + 1 < len(markers) else len(body)
-        item, original = body[marker.end():end], raw_body[marker.end():end]
+    for item, original in _numbered_item_pairs(text):
         # 原字/角色视图同长，按真实句界切片；每句都重新要求主语，不继承别项对象。
         offset = 0
         for sentence in re.finditer(r"[^。]+(?:。|$)", item):
@@ -210,6 +217,46 @@ def numbered_statement_pairs(text):
         if offset > len(item):
             raise ValueError("编号项文字边界不一致")
     return tuple(pairs)
+
+
+def structural_reading_match(text, policy, *, source_title=""):
+    """只证明同一固定条文的结构阅读关系，不供回答政策或引用资格使用。"""
+    from dataclasses import replace
+
+    focus = policy.query_focus
+    if not focus or not focus["attributes"]:
+        return False
+    compact = lambda value: re.sub(r"\s+", "", value)
+    attributes = tuple(compact(value) for value in focus["attributes"])
+    subject_policy = replace(policy, query_focus={**focus, "attributes": ()})
+    role_text = direct_statement_text(text)
+    items = _numbered_item_pairs(text)
+    colon = re.search(r"[：:]", role_text)
+    # 只有明确规范总述和已确认连续编号，才把子项保留为总述对象的阅读上下文。
+    if items and colon and re.search(r"(?:符合|满足|遵守).{0,8}(?:下列|以下|如下).{0,8}$",
+                                    compact(role_text[:colon.start()])):
+        header = role_text[:colon.start()]
+        if subject_policy.matches_query_focus(header, source_title=source_title):
+            for role, _ in numbered_statement_pairs(text):
+                part = compact(role)
+                if _STATEMENT_MODAL.search(part) and all(value in part for value in attributes):
+                    return True
+    # 同一编号项的逗号并列可省略对象；遇新对象/未知中间分句即停止继承。
+    # 不跨项、句号、分号、附注或表格，不从依据中的属性借词。
+    for role, _ in items[:64]:
+        sentence = re.split(r"[。；;：:]", role, maxsplit=1)[0]
+        parts = direct_statement_scopes(sentence)
+        if not parts or not subject_policy.matches_query_focus(parts[0], source_title=source_title):
+            continue
+        for part in parts[1:8]:
+            value = compact(part)
+            if (not any(value.startswith((attribute, "其" + attribute))
+                        for attribute in attributes)
+                    or not _STATEMENT_MODAL.search(value)):
+                break
+            if all(attribute in value for attribute in attributes):
+                return True
+    return False
 
 
 def subsequent_subject_pairs(text, subjects):
