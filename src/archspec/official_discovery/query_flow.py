@@ -4,6 +4,7 @@ import copy
 import hashlib
 import json
 import logging
+import re
 from datetime import UTC, datetime
 from threading import RLock
 from uuid import UUID, uuid4
@@ -613,6 +614,32 @@ class OfficialQueryFlow:
             return "UNAVAILABLE", "CURRENT_EVIDENCE_UNAVAILABLE"
         return "AVAILABLE", None
 
+    def _prepared_body_readback(self, row, batch):
+        """只提供原批次完整正文的当前读取事实，不把无证据改成出处确认。"""
+        if row["state"] != "NO_EVIDENCE" or not batch:
+            return None
+        if (batch.get("id") != row["acquisition_batch_id"]
+                or batch.get("discovery_run_id") != row["discovery_run_id"]
+                or batch.get("query_flow_id") != row["id"]
+                or batch.get("refresh") is not row["request"]["refresh"]):
+            return {"state": "UNAVAILABLE", "bindings": []}
+        bindings, seen = [], set()
+        for item in batch.get("items", []):
+            if item.get("state") != "READY" or item.get("kind") != "FULL_TEXT":
+                continue
+            source, snapshot = item.get("source_id"), item.get("snapshot_id")
+            if (not isinstance(source, str) or not re.fullmatch(r"gb55031|official-[a-f0-9]{32}", source)
+                    or not isinstance(snapshot, str) or not re.fullmatch(r"[a-f0-9]{64}", snapshot)):
+                return {"state": "UNAVAILABLE", "bindings": []}
+            if (source, snapshot) not in seen:
+                seen.add((source, snapshot))
+                bindings.append({"source_id": source, "snapshot_id": snapshot})
+        if not bindings:
+            return None
+        current, _ = self._current_binding_state([], bindings)
+        return {"state": "READABLE" if current == "AVAILABLE" else current,
+                "bindings": bindings if current == "AVAILABLE" else []}
+
     def _public(self, row, *, batch=None):
         # 不持久化/重放正文摘录。阅读候选必须走现有的当前权限搜索接口。
         result = {"id": row["id"], "queries": [], "results": [], "errors": [], "limitations": []}
@@ -643,6 +670,9 @@ class OfficialQueryFlow:
                 lookup_observations_scope="HISTORICAL",
                 current_observation_state=("READABLE" if current == "AVAILABLE" else current)
                     if bindings else "NOT_RECHECKED")
+        readback = self._prepared_body_readback(row, result.get("acquisition"))
+        if readback is not None:
+            result["query_flow"]["prepared_body_readback"] = readback
         if row["state"] == "READY":
             # 原终态及READY引用要求不变；任何当前读取失败仅使公开视图STALE。
             result["query_flow"].update(historical_state="READY", current_evidence=current)

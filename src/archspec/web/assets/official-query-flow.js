@@ -119,6 +119,19 @@
       || (flow.acquisition_batch_id && data.acquisition?.id!==flow.acquisition_batch_id)
       || (data.acquisition && (!flow.acquisition_batch_id || !Array.isArray(data.acquisition.items))))
       throw Error("查询流程身份或进度无法核对；未重新联网或调用模型");
+    if (Object.hasOwn(flow,"prepared_body_readback")) {
+      const body=flow.prepared_body_readback,bindings=body?.bindings;
+      const validBinding=b=>b && /^(?:gb55031|official-[a-f0-9]{32})$/.test(b.source_id)
+        && /^[a-f0-9]{64}$/.test(b.snapshot_id)
+        && data.acquisition?.items.some(item=>item.state==="READY" && item.kind==="FULL_TEXT"
+          && item.source_id===b.source_id && item.snapshot_id===b.snapshot_id);
+      if(flow.state!=="NO_EVIDENCE" || !["READABLE","RESTRICTED","UNAVAILABLE"].includes(body?.state)
+        || !Array.isArray(bindings) || (body.state==="READABLE"
+          ?!bindings.length || !bindings.every(validBinding)
+            || new Set(bindings.map(b=>b.source_id+":"+b.snapshot_id)).size!==bindings.length
+          :bindings.length!==0))
+        throw Error("本轮已准备正文的当前读取事实无法核对，未继续问答");
+    }
     const hasObservation = ["lookup_observations","lookup_observations_scope","current_observation_state"].some(key => Object.hasOwn(flow,key));
     if (hasObservation && (!globalThis.ArchSpecResultPresentation?.lookupObservations(flow.lookup_observations)
       || flow.lookup_observations_scope !== "HISTORICAL"
@@ -225,13 +238,20 @@
           // 部分批次只更新阅读列表，不调用onPrepared或触发问答/模型，也不提前结束流程。
         }
       }
-      if(!manual && !retryAttempt && flow.state==="READY" && !completed && automaticRereadAllowed(flow)) {
+      // 新正文可读但字面理解尚未匹配时，只续本轮已有的等待来源闭包。
+      // 历史恢复没有该闭包，不能借READY任务或GET获得新的模型授权。
+      const preparedUnmatched=flow.state==="NO_EVIDENCE" && flow.prepared_body_readback?.state==="READABLE"
+        && !historical && !context?.restored && typeof context?.onPrepared==="function";
+      if(!manual && !retryAttempt && !completed
+          && (flow.state==="READY" && automaticRereadAllowed(flow) || preparedUnmatched)) {
         completed=true;
         // 先免费重读当前正文；只有本轮仍有效的显式问答闭包可续答，历史恢复没有该授权。
         await context?.localFinished;
         const updated=current() && await globalThis.ArchspecPendingSearch?.restoreCached({query,sourceId,projectId,isCurrent:current});
         if(current())status.textContent=updated?`${historical?"历史查询进度 · 未重新联网核对 · ":""}已按当前资料免费重检；版本和适用条件仍须核对。`
           :"查询进度已读取，但当前正文重检未完成；未重新联网或执行收费问答。";
+        if(preparedUnmatched && updated && current())
+          status.textContent="正文当前可读，继续核对原问题；尚未确认答案依据。";
         if(updated && current() && !historical && !context?.restored && typeof context?.onPrepared==="function") {
           // 计算缓存复用不等于来源已存在；QA端核同task/revision/非重放WAITING_SOURCE后仅执行一次新操作。
           try {await context.onPrepared(current,{waitingSourceOnly:true});}
