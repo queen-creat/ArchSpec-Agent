@@ -475,6 +475,18 @@ def bind_literal_model_intent(proposal, query, public_conditions):
     """合并原问明确结构时同时绑定对象与操作；原模型提案和恢复记录不回写。"""
     if proposal.understanding != "CLEAR":
         return proposal, {}
+    from archspec.official_qa.intents import explicit_requirements_lookup
+
+    if (proposal.topic == "UNKNOWN" and proposal.operation == "MEASUREMENT_METHOD"
+            and explicit_requirements_lookup(query)):
+        # 原问明确列举要求时不要求量法谓词；保留已绑定对象/属性和原提案。
+        # 取值、判断及实际测量的混合问题已由共用意图边界拒绝，不推定设计条件。
+        payload = proposal.semantic_payload()
+        payload["operation"] = "REFERENCE_LOOKUP"
+        bound = ModelSemanticProposal.model_validate(payload)
+        return bound, {"plan_resolution": {"rule": "EXPLICIT_REQUIREMENTS_BEFORE_MEASUREMENT_V1",
+            "proposed_topic": proposal.topic, "effective_topic": bound.topic,
+            "proposed_operation": proposal.operation, "operation": bound.operation}}
     if proposal.topic == "DAYLIGHT_COEFFICIENT" and daylight_facility_reference(query):
         # 模型与保存的语义也必须核所问范围；设施名不能授权采光系数专题。
         # 通用对象/属性角色仍由原问原字校验，不引入新工程事实或第二次理解。

@@ -3,24 +3,42 @@
 import re
 
 
-def explicit_reference_lookup(query):
-    """只认明确查原文的请求；混合取值/判断问题不据此跳过必要条件。"""
-    from archspec.query_scope import requested_content
-
-    text = re.sub(r"\s+", "", requested_content(query))
+def _reference_request_allowed(text):
+    """查找操作共用取值、判断和否定请求边界，不因新增问法跳过条件。"""
     if re.search(r"多少|多大|几(?:米|层|平方米)|取几|具体(?:取值|数值)|"
                  r"怎么算|怎么计算|如何计算|计算结果|算出|是否|能否|可以|允许|"
                  r"(?:面积|系数|间距|净高|宽度|高度|限值|数值|取值|最高值|最低值)"
                  r"(?:应为|为|是|取|等于)(?:什么|几|多)", text):
         return False
-    if re.search(r"(?:不|别|无需|不用|不要|不需要)(?:只)?(?:查|找|给|提供)"
-                 r".{0,60}(?:出处|原文|条文|规范)", text):
+    return not re.search(r"(?:不|别|无需|不用|不要|不需要)(?:只)?(?:查|找|给|提供)"
+                         r".{0,60}(?:出处|原文|条文|规范)", text)
+
+
+def explicit_reference_lookup(query):
+    """只认明确查原文的请求；混合取值/判断问题不据此跳过必要条件。"""
+    from archspec.query_scope import requested_content
+
+    text = re.sub(r"\s+", "", requested_content(query))
+    if not _reference_request_allowed(text):
         return False
     return bool(re.search(
         r"(?:出处|原文)(?:在(?:哪(?:里)?|什么地方)|是什么|是哪(?:条|本|个))?[？?。]?$"
         r"|(?:规定|要求|依据|标准|规范|条文)(?:在(?:哪(?:里)?|什么地方)|从哪(?:里)?查)"
         r"|(?:查|找|定位)哪(?:一)?(?:条|本|部|项|个)(?:规范|标准|条文|规定)?"
         r"|哪(?:一)?(?:条|本|部)(?:规范|标准|条文|规定)", text))
+
+
+def explicit_requirements_lookup(query):
+    """明确列举要求/限制/例外只查正文；真实量法与混合取值请求不据此改派。"""
+    from archspec.query_scope import requested_content
+
+    text = re.sub(r"\s+", "", requested_content(query))
+    if not _reference_request_allowed(text) or re.search(
+            r"测量|量取|量法|计算|怎么算|如何算|怎么量|如何量|从哪.{0,12}量", text):
+        return False
+    return bool(re.search(
+        r"(?:有哪些|有何|有什么)(?:要求|规定|限制|条件|例外)"
+        r"(?:(?:和|与|及|、)(?:要求|规定|限制|条件|例外))*[？?。]?$", text))
 
 
 def net_height_question(text):

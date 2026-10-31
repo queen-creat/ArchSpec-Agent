@@ -262,6 +262,8 @@ class OfficialModelQAService:
                     "BUILDING_HEIGHT/MEASUREMENT_METHOD，不能把其他尺寸的量法归入建筑高度。"
                     "其他未登记主题的测量对象用UNKNOWN/MEASUREMENT_METHOD与focus=null，并逐字提取对象和性质；"
                     "该组合只查量法原文，不计算数值或推定工程条件。"
+                    "量法指测量起止点、测量步骤或计算方法；询问某设施有哪些要求、限制、条件或例外，"
+                    "不是量法，未登记主题应使用UNKNOWN/REFERENCE_LOOKUP，不因属性含高度、坡度等词改为MEASUREMENT_METHOD。"
                     "屋顶设备是否计入建筑高度用BUILDING_HEIGHT/MEASUREMENT_METHOD与ROOF_EQUIPMENT。"
                     "面积具体限值用FIRE_COMPARTMENT_AREA/CONDITIONED_LIMIT；日照间距公式用"
                     "SUNLIGHT_SPACING/CALCULATION_RULES；精确条文原文用EXACT_REFERENCE/REFERENCE_LOOKUP。"
