@@ -612,6 +612,8 @@ class OfficialDocumentService:
                     or type(snapshot.get("rendering_size_bytes")) is not int
                     or snapshot["rendering_size_bytes"] < 1):
                 raise ValueError("网页派生阅读资料身份缺失")
+        from archspec.official_documents.saved_snapshot_pages import validate_saved_pages
+        validate_saved_pages(snapshot)
         parents = snapshot.get("permission_parent_ids", [])
         if (not isinstance(parents, list) or len(parents) > 511
                 or not all(isinstance(parent, str) and re.fullmatch(r"[a-f0-9]{64}", parent)
@@ -1437,6 +1439,20 @@ class OfficialDocumentService:
             from archspec.official_documents.web_body import snapshot_web_spec
             return replace(snapshot_web_spec(record), chunker_version=current.chunker_version,
                            chunk_config=current.chunk_config)
+        provenance = record.get("saved_page_provenance")
+        if record.get("storage_layout") is None or provenance is not None:
+            from archspec.official_documents.saved_snapshot_pages import saved_pages_spec
+
+            # 只从同一来源的固定父快照复用文字；绝不从latest猜历史配置。
+            parent_id = (provenance["parent_snapshot_id"] if provenance is not None
+                         else record["snapshot_id"])
+            parent, content = self._bound_text_snapshot(record["source_id"], parent_id)
+            spec = saved_pages_spec(parent, content, current)
+            if (record["sha256"] != parent["sha256"] or record["pages"] != parent["pages"]
+                    or provenance is not None and provenance != spec.extraction_config
+                    or provenance is None and record != parent):
+                raise ValueError("历史页文字与固定父快照不同，未重新切分")
+            return spec
         identity = record.get("processing_identity", {})
         from archspec.official_documents.native_text import native_processing_spec
         configs = [current.extraction_config, native_processing_spec(current).extraction_config]
@@ -1571,6 +1587,22 @@ class OfficialDocumentService:
             if cached is None:
                 pages = store.load_extraction(spec, digest)
                 extraction_cache_hit = pages is not None
+                if pages is None and saved_extraction_only:
+                    from archspec.official_documents.saved_snapshot_pages import PARSER
+
+                    if spec.parser_version == PARSER:
+                        # 旧记录没有共享提取层；保存其已核原页文字的独立派生产物，
+                        # 不运行提取器、不伪造原OCR配置，也不覆盖原固定快照。
+                        parent, content = self._bound_text_snapshot(
+                            source_id, spec.extraction_config["parent_snapshot_id"])
+                        if (hashlib.sha256(content).hexdigest()
+                                != spec.extraction_config["parent_snapshot_sha256"]):
+                            raise ValueError("重切分期间固定父快照已改变")
+                        pages = parent["pages"]
+                        if (len(pages) != actual_page_count
+                                or stable_hash(pages) != spec.extraction_config["pages_sha256"]):
+                            raise ValueError("已存页文字与原件页数或派生指纹不同")
+                        store.save_extraction(spec, digest, pages)
                 if pages is None:
                     if saved_extraction_only:
                         raise ValueError("已保存提取缓存缺失，保留旧正文，未下载或重新识别")
@@ -1603,7 +1635,10 @@ class OfficialDocumentService:
                 raise ValueError("缓存提取页数与原文件不一致，未发布完整正文")
             return self._publish_processed(source, old, old_pointer, spec, digest, size_bytes,
                 raw_path, pages, chunks, checked_at, cache_hit, extraction_cache_hit,
-                saved_extraction_only=saved_extraction_only)
+                saved_extraction_only=saved_extraction_only,
+                format_fields=({"saved_page_provenance": spec.extraction_config}
+                               if spec.extraction_config.get("schema") == "FIXED_SNAPSHOT_PAGE_TEXT_V1"
+                               else None))
 
     def _publish_processed(self, source, old, old_pointer, spec, digest, size_bytes,
                            raw_path, pages, chunks, checked_at, cache_hit, extraction_cache_hit,
@@ -1646,6 +1681,11 @@ class OfficialDocumentService:
         }
         if saved_extraction_only:
             result.update(processing_origin="SAVED_EXTRACTION_RECHUNK", rechunked_at=checked_at)
+        if result.get("saved_page_provenance") is not None:
+            # 发布前重新核父记录字节和当前许可；初读通过不能替代最终固定身份。
+            rebound = self._saved_extraction_spec(result)
+            if rebound.identity(digest) != result["processing_identity"]:
+                raise ValueError("已存页文字的派生处理身份在发布前变化")
         history = folder / f"{snapshot_id}.json"
         if history.exists():
             prior = json.loads(history.read_text(encoding="utf-8"))
