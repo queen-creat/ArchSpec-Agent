@@ -12,8 +12,9 @@ from uuid import UUID, uuid4
 import httpx
 
 from archspec.official_discovery.government_copies import (
-    candidate_priority,
     inspect_government_copy,
+    inspection_priority,
+    supports_inspection,
 )
 from archspec.official_discovery.local_sources import YichangClueProvider
 from archspec.official_discovery.plan import MATCH_MESSAGES, build_discovery_plan
@@ -138,7 +139,7 @@ class DiscoveryService:
         local = plan.route == "YICHANG"
         queries, omitted = public_plan["queries"], plan.omitted_query_count
         # 新共同目标及公平调度隔离全部旧查询缓存；原公告和正文快照完全保留。
-        cache_identity = {"version": 8 if local else 17, "plan": public_plan}
+        cache_identity = {"version": 8 if local else 18, "plan": public_plan}
         if plan.route == "UNSUPPORTED_LOCAL":
             # 只隔离地方候选新排序，旧查询档案和全国/已审核来源缓存保持。
             cache_identity["local_notice_priority"] = 1
@@ -290,7 +291,11 @@ class DiscoveryService:
                 if term not in clue["matched_queries"]:
                     clue["matched_queries"].append(term)
         candidates = sorted(self._fair_candidates(queues, found, limit=15),
-                            key=lambda clue: candidate_priority(clue, plan))
+                            key=lambda clue: inspection_priority(clue, plan))
+        for clue in candidates:
+            if not supports_inspection(clue["url"]):
+                clue.update(inspection_state="UNSUPPORTED_FORMAT",
+                    inspection_message="此附件格式尚不支持自动核对，请打开官方链接；未获取正文")
         result["external_clues"] = candidates[:5]
         result["external_omitted_clue_count"] = max(0, len(found) - len(result["external_clues"]))
         # SKIPPED不是成功或失败的实际请求；全失败与已有成功须明确区分。
@@ -303,6 +308,9 @@ class DiscoveryService:
         result["external_navigation"] = []
         while ordered and notice_budget.count < 5:
             clue = ordered.pop(0)
+            # 仍保留官方线索，但不把已知二进制附件当网页读取或占五页核对额度。
+            if not supports_inspection(clue["url"]):
+                continue
             # 已审核地方配对保持原规则；其他地方页交共同主文件身份核验，不能拿全国副本代替。
             local_source = reviewed_publication(clue["url"])
             local_target = (local_source is not None and plan.region is not None

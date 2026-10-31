@@ -52,7 +52,7 @@ def _target(href):
 
 class DuckDuckGoDiscoveryProvider:
     name = 'DUCKDUCKGO'
-    version = 'DUCKDUCKGO_GOV_CLUES_V2'
+    version = 'DUCKDUCKGO_GOV_CLUES_V3'
 
     def __init__(self, *, client=None, proxy_url=None):
         self.client = client
@@ -110,13 +110,13 @@ class DuckDuckGoDiscoveryProvider:
                               'score_kind': 'NOT_CALIBRATED', 'kind': 'SEARCH_SNIPPET',
                               'body_status': 'NOT_ACQUIRED', 'lifecycle_status': 'UNKNOWN',
                               'provider': self.name})
-            from archspec.official_discovery.government_copies import candidate_priority
+            from archspec.official_discovery.government_copies import inspection_priority
             from archspec.official_discovery.plan import build_discovery_plan
 
             # 同一有界响应先复用主文件优先规则，再取五条；不增加请求或正文额度。
             # 这里只用已校验公共词决定候选读取顺序，不把搜索题名/摘要当正文身份。
             plan = build_discovery_plan(term)
-            items = sorted(items, key=lambda clue: candidate_priority(clue, plan))
+            items = sorted(items, key=lambda clue: inspection_priority(clue, plan))
             return {'items': items[:5], 'total': len(items[:5]),
                     'rejected_result_count': rejected, 'search_query': query, 'exact_match': False}
         finally:

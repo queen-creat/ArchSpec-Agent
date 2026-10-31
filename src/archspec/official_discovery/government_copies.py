@@ -5,7 +5,7 @@ import json
 import re
 import tempfile
 from pathlib import Path
-from urllib.parse import urljoin, urlsplit
+from urllib.parse import unquote, urljoin, urlsplit
 
 import pymupdf
 
@@ -98,6 +98,18 @@ def _embedded_attachment_links(html):
                 if isinstance(name, str) and isinstance(path, str):
                     # 后续统一核主文件题名、同站地址、PDF签名和完整原件身份。
                     yield {"title": name, "href": path}
+
+
+def supports_inspection(url):
+    """只按明确路径后缀跳过尚不支持的附件；查询参数不证明响应文件类型。"""
+    path = unquote(urlsplit(url).path).lower()
+    return not path.endswith((".doc", ".docx", ".xls", ".xlsx", ".ppt", ".pptx",
+                              ".zip", ".rar", ".7z", ".gz", ".jpg", ".jpeg", ".png", ".gif"))
+
+
+def inspection_priority(clue, plan):
+    """可核网页/PDF先于已知不支持附件；原主文件和地域排序继续复用。"""
+    return (not supports_inspection(clue["url"]), *candidate_priority(clue, plan))
 
 
 def candidate_priority(clue, plan):
