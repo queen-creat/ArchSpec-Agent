@@ -172,6 +172,14 @@ def validated_local_reading_terms(values):
     return tuple(result)
 
 
+class ReadingRoleAlias(BaseModel):
+    """专业表达仅绑定原问角色，不承载数值、来源或适用条件。"""
+    model_config = ConfigDict(extra="forbid", frozen=True, str_strip_whitespace=True)
+    role: Literal["subjects", "attributes"]
+    original: Annotated[str, Field(min_length=2, max_length=32)]
+    term: Annotated[str, Field(pattern=r"^[\u3400-\u9fffA-Za-z]{2,32}$")]
+
+
 class ModelSemanticProposal(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True, str_strip_whitespace=True)
     version: Literal["MODEL_SEMANTIC_PLAN_V2"] = "MODEL_SEMANTIC_PLAN_V2"
@@ -184,6 +192,7 @@ class ModelSemanticProposal(BaseModel):
         default=(), max_length=3)
 
     local_reading_terms: tuple[str, ...] = ()
+    local_reading_aliases: tuple[ReadingRoleAlias, ...] = Field(default=(), max_length=6)
 
     @field_validator("local_reading_terms", mode="before")
     @classmethod
@@ -205,12 +214,25 @@ class ModelSemanticProposal(BaseModel):
             excluded.add("public_search_titles")
         if not self.local_reading_terms:
             excluded.add("local_reading_terms")
+        if not self.local_reading_aliases:
+            excluded.add("local_reading_aliases")
         return self.model_dump(exclude=excluded)
 
     @model_validator(mode="after")
     def registered_combination(self):
         if self.topic != "UNKNOWN" or self.operation != "REFERENCE_LOOKUP" or self.understanding != "CLEAR":
             object.__setattr__(self, "local_reading_terms", ())
+        aliases = ()
+        if (self.topic == "UNKNOWN" and self.operation == "REFERENCE_LOOKUP"
+                and self.understanding == "CLEAR" and self.query_focus is not None):
+            # 一对原角色只保留唯一对应；歧义提示不靠先后顺序选一个。
+            grouped = {}
+            for alias in self.local_reading_aliases:
+                if alias.original in getattr(self.query_focus, alias.role):
+                    grouped.setdefault((alias.role, alias.original), set()).add(alias.term)
+            aliases = tuple(ReadingRoleAlias(role=role, original=original, term=next(iter(terms)))
+                            for (role, original), terms in grouped.items() if len(terms) == 1)
+        object.__setattr__(self, "local_reading_aliases", aliases)
         if self.public_search_titles and (self.topic != "UNKNOWN" or self.understanding != "CLEAR"):
             object.__setattr__(self, "public_search_titles", ())
         # 焦点是原问的额外约束，不替代专题政策；已登记主题也不能丢掉对象。
@@ -250,6 +272,8 @@ class QuestionPlan(SnapshotRecord):
 
     local_reading_terms: tuple[str, ...] = field(default=(), metadata={"omit_empty": True})
 
+    local_reading_aliases: tuple = field(default=(), metadata={"omit_empty": True})
+
     requested_editions: tuple[tuple[str, str, str], ...] = field(default=(), metadata={"omit_empty": True})
 
     def __post_init__(self):
@@ -259,6 +283,15 @@ class QuestionPlan(SnapshotRecord):
         if self.topic != "UNKNOWN" or self.operation != "REFERENCE_LOOKUP" or self.understanding != "CLEAR":
             terms = ()
         object.__setattr__(self, "local_reading_terms", terms)
+        aliases = tuple(tuple(row) for row in self.local_reading_aliases)
+        if (self.topic != "UNKNOWN" or self.operation != "REFERENCE_LOOKUP"
+                or self.understanding != "CLEAR" or not self.query_focus):
+            aliases = ()
+        aliases = tuple((role, original, term) for role, original, term in aliases
+                        if role in {"subjects", "attributes"}
+                        and original in self.query_focus.get(role, ())
+                        and re.fullmatch(r"[\u3400-\u9fffA-Za-z]{2,32}", term))
+        object.__setattr__(self, "local_reading_aliases", aliases)
         # 模型建议只作读取顺序提示，不变成用户已指定的规范或工程适用性。
         object.__setattr__(self, "public_search_titles", validated_public_titles(self.public_search_titles))
         for name in ("conditions", "public_conditions", "condition_provenance", "explicit_source_scope",
@@ -406,7 +439,7 @@ class LocalPlanner:
         return ModelSemanticProposal(topic=topic, operation=operation, focus=focus,
             understanding="UNCERTAIN" if topic == "UNKNOWN" and literal is None else "CLEAR",
             query_focus=QueryFocusProposal.model_validate(literal) if literal is not None else None).model_dump(
-                exclude={"public_search_titles"})
+                exclude={"public_search_titles", "local_reading_aliases"})
 
 
 def bind_literal_model_intent(proposal, query, public_conditions):
@@ -519,6 +552,8 @@ def build_question_plan(request: QuestionRequest, proposal, project_provider=Non
         planner_source=planner_source, query_focus=query_focus,
         public_search_titles=semantic.public_search_titles,
         local_reading_terms=semantic.local_reading_terms,
+        local_reading_aliases=tuple((row.role, row.original, row.term)
+                                   for row in semantic.local_reading_aliases),
         # 未登记本地主题是能力缺口，不能据此断言用户表达含糊。
         # 仍保留原有非CLEAR拦截；原因不授权扩大证据或开始模型调用。
         understanding_reason=(None if semantic.understanding == "CLEAR" else

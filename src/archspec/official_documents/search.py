@@ -289,7 +289,11 @@ def search_snapshots(snapshots: list[dict], query: str, top_k: int,
         hits, fragments = _unique_clauses(hits, origins, chunks)
     selection = None
     if lookup_plan is not None and not CLAUSE.fullmatch(query):
-        from archspec.official_documents.lookup import LookupPlan, _preferred_reading_indices
+        from archspec.official_documents.lookup import (
+            LookupPlan,
+            _preferred_reading_indices,
+            _role_reading_indices,
+        )
 
         if not isinstance(lookup_plan, LookupPlan) or lookup_plan.parallel_queries:
             raise ValueError("单题读取择取需要本次共同计划")
@@ -304,8 +308,17 @@ def search_snapshots(snapshots: list[dict], query: str, top_k: int,
             else:
                 raw = [(hit.chunk, hit.score) for hit in
                        BM25Searcher(LexicalTokenizer()).search(raw_query, chunks, top_k)]
+        # 同一固定快照只做一次角色扫描，关键词候选和补充候选复用结果。
+        role_rows = [(snapshot, _role_reading_indices(lookup_plan, snapshot)) for snapshot in snapshots]
         preferred = {f"{snapshot['source_id']}:{snapshot['snapshot_id']}:{index}"
-                     for snapshot in snapshots for index in _preferred_reading_indices(lookup_plan, snapshot)}
+                     for snapshot, indices in role_rows
+                     for index in _preferred_reading_indices(lookup_plan, snapshot, role_indices=indices)}
+        # 角色对应可找到原问无字面交集的正文；只补当前已授权语料的阅读候选。
+        # 零分明确表示没有关键词分数，不能伪造BM25命中或修改raw_hits。
+        alias_ids = {f"{snapshot['source_id']}:{snapshot['snapshot_id']}:{index}"
+                     for snapshot, indices in role_rows for index in indices}
+        existing = {chunk.id for chunk, _ in hits}
+        hits.extend((chunk, 0.0) for chunk in chunks if chunk.id in alias_ids and chunk.id not in existing)
         # 不改V1/V2分数，同组内保持原顺序；只有同一次检索的前五个择取结果进入初读。
         hits.sort(key=lambda hit: hit[0].id not in preferred)
         diversity = None
@@ -322,6 +335,8 @@ def search_snapshots(snapshots: list[dict], query: str, top_k: int,
                      "ranking_queries": 1 + int(raw_query != query),
                      "raw_hits": [{key: row.get(key) for key in fields} for row in raw_rows],
                      "preferred_ids": [chunk.id for chunk, _ in hits[:top_k] if chunk.id in preferred]}
+        if alias_ids:
+            selection["role_alias_ids"] = [chunk.id for chunk, _ in hits[:top_k] if chunk.id in alias_ids]
         if diversity is not None:
             selection["diversity"] = diversity
     hits = hits[:top_k]

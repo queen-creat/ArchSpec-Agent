@@ -481,7 +481,45 @@ def _reading_hint_matches(prepared, snapshot, role, term):
     return all(any(prefix in value for value in contexts) for prefix in prefixes)
 
 
-def _preferred_reading_indices(prepared, snapshot):
+def _role_reading_indices(prepared, snapshot):
+    """把专业表达逐项代入临时阅读角色；原计划和回答政策始终保留原问。"""
+    from dataclasses import replace
+
+    from archspec.official_documents.clause_units import clause_runs
+    from archspec.official_documents.reading_scope import explicitly_excluded
+
+    aliases = prepared.question_plan.local_reading_aliases
+    if (not aliases or prepared.question_plan.explicit_clause_numbers
+            or prepared.question_plan.explicit_clause_number
+            or not _reading_source_matches(prepared, snapshot)):
+        return set()
+    from archspec.official_documents.classification_lookup import classification_subject
+    from archspec.official_documents.table_lookup import table_lookup_subject
+
+    if (table_lookup_subject(prepared.question_plan.search_query) is not None
+            or classification_subject(prepared.question_plan.search_query) is not None):
+        return set()
+    focus = dict(prepared.question_plan.query_focus)
+    for role in ("subjects", "attributes"):
+        translations = {original: term for kind, original, term in aliases if kind == role}
+        focus[role] = tuple(translations.get(value, value) for value in focus[role])
+    policy = replace(prepared.policy, query_focus=focus)
+    groups = defaultdict(list)
+    rows = snapshot["chunks"]
+    runs = clause_runs(rows)
+    for index, row in enumerate(rows):
+        groups[runs.get(index, (index,))[0]].append((index, row))
+    chosen = set()
+    for members in groups.values():
+        text = "\n".join(row["text"] for _, row in members)
+        if (policy.is_body(text, members[0][1].get("clause_number"))
+                and not explicitly_excluded(prepared.original_query, text)
+                and policy.matches_query_focus(text, source_title=snapshot.get("title", ""))):
+            chosen.update(index for index, _ in members)
+    return chosen
+
+
+def _preferred_reading_indices(prepared, snapshot, *, role_indices=None):
     """只为读取择取完整同条主题信号；不签发完整性、适用性或引用资格。"""
     from archspec.official_documents.clause_units import clause_runs
 
@@ -503,10 +541,12 @@ def _preferred_reading_indices(prepared, snapshot):
     groups = defaultdict(list)
     for index, row in enumerate(rows):
         groups[runs.get(index, (index,))[0]].append((index, row))
-    preferred = set()
+    preferred = (_role_reading_indices(prepared, snapshot) if role_indices is None else set(role_indices))
     from archspec.official_documents.reading_scope import direct_statement_pairs
 
-    terms = prepared.question_plan.local_reading_terms
+    # 有角色对应时不再并用无角色词袋，避免缺属性被旧提示绕过。
+    terms = (() if prepared.question_plan.local_reading_aliases
+             else prepared.question_plan.local_reading_terms)
     for members in groups.values():
         # 术语只在同一陈述内共同出现才影响阅读顺序，不能跨对象借词。
         original = "\n".join(row["text"] for _, row in members)
