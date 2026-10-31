@@ -319,17 +319,23 @@ def _compact(text):
 
 def _parallel_requirements(query, question):
     """只拆明确并列的2—4个要求；不拆用途枚举、标准题名或推断项目条件。"""
+    # 逗号也用于背景/条件与主问题之间；没有并列词或“分别/各自”时，
+    # 保持一个完整问题，不能凭两处尺寸词就制造多个要求。
+    if not re.search(r"、|以及|和|分别|各自", query):
+        return []
     pieces = re.split(r"、|以及|和|[，,]", query)
     if not 2 <= len(pieces) <= 4:
         return []
     subject, marker, first = pieces[0].partition("的")
     shared = subject if marker and len(subject) <= 16 else ""
+    if "了" in shared:
+        return []  # 已发生变化的叙述不是可复用到每个子问的名词对象。
     if shared:
         pieces[0] = first
     labels = [re.sub(r"分别|各自|查哪条规范|查哪里|有什么要求|有什么规定|怎么规定|如何规定|一样吗|有哪些要求", "", part).strip(" ？?")
               for part in pieces]
     dimensions = r"宽|高|坡度|长度|数量|面积|尺寸|踏步|平台|栏杆|出口|距离|间距"
-    if any(len(label) < 2 or not re.search(dimensions, label) for label in labels):
+    if any(len(label) < 2 or "了" in label or not re.search(dimensions, label) for label in labels):
         return []
     parts = []
     for label in labels:
@@ -339,7 +345,9 @@ def _parallel_requirements(query, question):
         child = replace(prepared.question_plan, conditions={**prepared.question_plan.conditions, **question.conditions})
         # 尺寸/多宽是问法词，不要求规范原文也逐字写“尺寸”；不补任何数值。
         words = label.replace("尺寸", "宽度 高度").replace("多宽", "宽度").replace("多高", "高度")
-        words = re.sub(r"最大|最小|要", "", words)
+        words = re.sub(r"最大|最小", "", words)
+        # 只处理“要多宽/要多高”等提问位置；主要/必要等实质原字不能全局删。
+        words = re.sub(r"要(?=宽度|高度|尺寸|多少|多大)", "", words)
         context = shared or question.conditions.get("building_use", "")
         dimension = re.search(r"净高|净宽|宽度|高度|坡度|长度|数量|面积|距离|间距", words)
         subject = words[:dimension.start()].strip() if dimension else (
