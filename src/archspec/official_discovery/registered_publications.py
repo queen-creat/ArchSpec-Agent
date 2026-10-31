@@ -19,6 +19,11 @@ _DEFAULT_ENTRIES = (
     ("JGJ 100-2015", "车库建筑设计规范",
      "https://www.mohurd.gov.cn/gongkai/zc/wjk/art/2015/art_17339_224048.html"),
 )
+# 已实际核过首页的公共寻找入口；仍须每次读取确认，不附带正文或现行性结论。
+_DEFAULT_COPY_ENTRIES = (
+    ("GB 50099-2011", "中小学校设计规范",
+     "https://edu.foshan.gov.cn/attachment/0/196/196510/4866032.pdf"),
+)
 _MAX_ENTRIES = 128
 
 
@@ -42,9 +47,9 @@ def _public_target(term):
 class PublicationCatalog:
     """只存不可变公共字段；内容指纹用于隔离旧查询缓存，输出每次独立复制。"""
 
-    __slots__ = ("_entries", "_version")
+    __slots__ = ("_copy_entries", "_entries", "_version")
 
-    def __init__(self, entries=None):
+    def __init__(self, entries=None, *, copy_entries=None):
         source = (
             ({"code": code, "title": title, "url": url} for code, title, url in _DEFAULT_ENTRIES)
             if entries is None else entries
@@ -72,11 +77,38 @@ class PublicationCatalog:
             raise ValueError("已审核公告目录含无效入口、重复身份或超限输入") from None
         self._entries = tuple(sorted(by_url.values(), key=lambda entry: (
             entry.code, entry.title, entry.url)))
+        from archspec.official_documents.government_urls import validate_government_url
+
+        copies = (_DEFAULT_COPY_ENTRIES if entries is None else ()) if copy_entries is None else copy_entries
+        by_copy_url = {}
+        try:
+            if isinstance(copies, (str, bytes, bytearray, dict)):
+                raise TypeError
+            for index, row in enumerate(copies):
+                if index >= _MAX_ENTRIES:
+                    raise ValueError
+                if copy_entries is None:
+                    row = dict(zip(("code", "title", "url"), row, strict=True))
+                if not isinstance(row, dict) or set(row) != {"code", "title", "url"}:
+                    raise ValueError
+                code = normalize_standard_code(row["code"])
+                if code is None or row["title"] not in PUBLIC_TITLES:
+                    raise ValueError
+                url = validate_government_url(row["url"])
+                entry = _Publication(code, row["title"], url)
+                if url in by_copy_url and by_copy_url[url] != entry:
+                    raise ValueError
+                by_copy_url[url] = entry
+        except (KeyError, TypeError, ValueError):
+            raise ValueError("已审核政府全文入口含无效地址、身份或超限输入") from None
+        self._copy_entries = tuple(sorted(by_copy_url.values(),
+            key=lambda entry: (entry.code, entry.title, entry.url)))
         payload = json.dumps(
             {"national": [(entry.code, entry.title, entry.url) for entry in self._entries],
-             "local_policy": LOCAL_POLICY_VERSION},
+             "local_policy": LOCAL_POLICY_VERSION,
+             "copies": [(entry.code, entry.title, entry.url) for entry in self._copy_entries]},
             ensure_ascii=False, separators=(",", ":"))
-        self._version = "REGISTERED_PUBLICATIONS_V1:" + hashlib.sha256(payload.encode("utf-8")).hexdigest()
+        self._version = "REGISTERED_PUBLICATIONS_V2:" + hashlib.sha256(payload.encode("utf-8")).hexdigest()
 
     @property
     def version(self):
@@ -94,6 +126,16 @@ class PublicationCatalog:
                     for entry in REVIEWED_PUBLICATIONS.values()
                     if entry.public_term == term
                     and plan.match_source(entry.code, entry.title) == "TARGET"]
+        return self._for_entries(self._entries, plan, term)
+
+    def copies_for_query(self, plan, term):
+        """政府全文只在精确目标中选入口；旧显式空目录仍完全隔离默认入口。"""
+        return self._for_entries(self._copy_entries, plan, term)
+
+    @staticmethod
+    def _for_entries(entries, plan, term):
+        if not isinstance(plan, DiscoveryPlan):
+            raise TypeError("官方入口选择需要共同发现计划")
         if plan.route != "MOHURD" or plan.region is not None:
             return []
         target = _public_target(term)
@@ -108,7 +150,7 @@ class PublicationCatalog:
         query_plan = replace(plan, targets=(target,))
         return [
             {"title": entry.title, "url": entry.url}
-            for entry in self._entries
+            for entry in entries
             if target_plan.match_source(entry.code, entry.title) == "TARGET"
             and query_plan.match_source(entry.code, entry.title) == "TARGET"
         ]

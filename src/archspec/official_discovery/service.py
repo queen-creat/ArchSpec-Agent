@@ -402,10 +402,10 @@ class DiscoveryService:
         from archspec.persistence.runtime_bindings import current_runtime, runtime_scope
         bindings = current_runtime()
 
-        def invoke(operation, *args):
+        def invoke(operation, *args, **kwargs):
             # 只传固定运行绑定；每个线程自建/释放资源，不复制请求的 SQL 连接或模型租约。
             with runtime_scope(bindings):
-                return operation(*args)
+                return operation(*args, **kwargs)
 
         with ThreadPoolExecutor(max_workers=3) as executor:
             futures = ([None] * len(queries) if registered_local else
@@ -443,6 +443,37 @@ class DiscoveryService:
                     notice = {**item, "version_check": "UNREADABLE", "lifecycle_status": "UNKNOWN",
                               "status": "PENDING_REVIEW", "full_text_available": False}
                     results.append(self._match_notice(notice, plan) if plan else notice)
+            # 公告没有目标完整附件时，复用已核政府全文入口；仍读实际首页再登记。
+            # 与搜索和公告共用五次尝试，失败不释放，不把目录记录当正文。
+            copies_for_query = getattr(self.publication_catalog, "copies_for_query", None)
+            has_attachment = any(row.get("attachments") and row.get("target_match") == "TARGET"
+                and row.get("notice_type") in {"PUBLICATION", "OFFICIAL_COPY"} for row in results)
+            if plan is not None and not registered_local and not has_attachment and callable(copies_for_query):
+                copy_queues, copy_found = [], {}
+                for query in queries:
+                    entries = copies_for_query(plan, query["term"])
+                    copy_queues.append([entry["url"] for entry in entries])
+                    for entry in entries:
+                        current = copy_found.setdefault(entry["url"], {**entry, "matched_queries": []})
+                        if query["term"] not in current["matched_queries"]:
+                            current["matched_queries"].append(query["term"])
+                for entry in self._fair_candidates(copy_queues, copy_found):
+                    found.setdefault(entry["url"], entry)
+                    if not notice_budget.reserve(entry["url"]):
+                        continue
+                    candidates.append(entry)
+                    try:
+                        self.cache_dir.mkdir(parents=True, exist_ok=True)
+                        notice = invoke(inspect_government_copy, entry, plan,
+                            client=getattr(self.provider, "client", None), cache_dir=self.cache_dir)
+                        notice.update(matched_queries=entry["matched_queries"],
+                                      entry_origin="REVIEWED_GOVERNMENT_COPY")
+                        results.append(self._match_notice(notice, plan))
+                        read_successes += 1
+                    except NETWORK_ERRORS as error:
+                        errors.append({"url": entry["url"],
+                            "message": _network_failure(error) + "；已登记入口未当作正文"})
+
         return {
             "id": str(uuid4()), "queries": queries, "searches": searches, "results": results,
             "errors": errors, "status": "FAILED" if (
