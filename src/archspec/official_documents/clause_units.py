@@ -46,6 +46,29 @@ def clause_indices(rows, selected_index):
     return clause_runs(rows).get(selected_index, (selected_index,))
 
 
+
+def clause_label_issues(rows, indices):
+    """固定标签须与片段开头的明确条头一致；只报告，不改旧标签或原字。
+
+    续文没有独立条头时不猜归属；折行引用沿共同clause_start规则排除。
+    只检查当前完整阅读单元，不把邻接条文的问题传给所选正文。
+    """
+    findings = []
+    for index in indices:
+        row = rows[index]
+        label = row.get("clause_number")
+        if not CLAUSE.fullmatch(label or ""):
+            continue
+        first = next((line.strip() for line in row["text"].splitlines() if line.strip()), "")
+        anchor = clause_start(first)
+        if anchor is None or anchor["number"] == label:
+            continue
+        findings.append({"kind": "CLAUSE_LABEL_MISMATCH", "clause_number": label,
+            "observed_clause_number": anchor["number"], "chunk_index": index,
+            "page_start": row["page_start"], "page_end": row["page_end"],
+            "message": "固定条号标签与正文起始条号不一致；保留原文和原页，不作为完整摘录。"})
+    return findings
+
 def _scanned_list_gaps(record, selected):
     """整条续文一起核显式列表跳号；只报告风险，不补编号或原字。"""
     if not selected or not any(page.get("method") in {"OCR", "HYBRID"}

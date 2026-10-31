@@ -1123,7 +1123,11 @@ class OfficialDocumentService:
         from archspec.official_documents.named_units import named_unit
 
         unit = named_unit(rows, selected_index) if clause is None else None
-        from archspec.official_documents.clause_units import clause_indices, scanned_clause_gaps
+        from archspec.official_documents.clause_units import (
+            clause_indices,
+            clause_label_issues,
+            scanned_clause_gaps,
+        )
         from archspec.official_documents.document_sections import document_section, section_rows
 
         group_rows = section_rows(record)
@@ -1142,6 +1146,7 @@ class OfficialDocumentService:
                             "message": "固定条号与未被正文引用的表题归属尚未核对；可能存在识别漏条号，仅供原页查阅。"}
                            for number in foreign_tables]
         boundary_issues.extend(scanned_clause_gaps(record, same_clause))
+        boundary_issues.extend(clause_label_issues(rows, same_clause))
         section = document_section(record, min(rows[i]["page_start"] for i in same_clause),
                                    max(rows[i]["page_end"] for i in same_clause))
         if section and section["kind"] in {"COMMENTARY", "MIXED"}:
