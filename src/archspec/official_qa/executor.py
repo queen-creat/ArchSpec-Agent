@@ -389,7 +389,10 @@ class OfficialQAExecutor:
                 or self.plan.operation not in {"REFERENCE_LOOKUP", "MEASUREMENT_METHOD"}
                 or self.parallel_parts or self.plan.explicit_clause_numbers):
             return set()
-        from archspec.official_documents.reading_scope import direct_statement_text
+        from archspec.official_documents.reading_scope import (
+            direct_statement_text,
+            main_subject_match,
+        )
         from archspec.official_documents.reference_relevance import phrases
 
         # 关联阅读与答案角色分别核对：复合对象或口语未逐字对应时，仍可查看
@@ -403,11 +406,30 @@ class OfficialQAExecutor:
                       and self.policy.is_body(hit["text"], hit.get("clause_number"))
                       and len(terms & phrases(direct_statement_text(hit["text"]))) >= 2]
         preferred = set(searched.get("candidate_selection", {}).get("preferred_ids", ()))
-        if any(hit["id"] in preferred or self.policy.relevant_text(
-                hit["text"], conditions, source_title=hit.get("title", ""))
-               for hit in searched["results"] if self._source_allowed(hit)
-               and self.policy.is_body(hit["text"], hit.get("clause_number"))):
-            return set()
+        primary = [hit for hit in searched["results"] if self._source_allowed(hit)
+                   and self.policy.is_body(hit["text"], hit.get("clause_number"))
+                   and (hit["id"] in preferred or self.policy.relevant_text(
+                       hit["text"], conditions, source_title=hit.get("title", "")))]
+        if primary:
+            focus = self.plan.query_focus
+            if not focus or not focus["subjects"]:
+                return set()  # 尚未取得对象线索时不把其他用途的相同属性加入混合阅读。
+
+            def has_subject_clue(hit):
+                text = direct_statement_text(hit["text"])
+                return any(main_subject_match(text, subject) or phrases(subject) & phrases(text)
+                           for subject in focus["subjects"])
+
+            # 单个主候选不代表整问已覆盖。只补同次命中中新增的原问实质词，
+            # 不让背景词重复、输入依据或同条重复命中占用关联阅读名额。
+            covered = set().union(*(phrases(direct_statement_text(hit["text"])) for hit in primary))
+            missing = terms - covered
+            primary_units = {(hit["source_id"], hit["snapshot_id"], hit["clause_number"])
+                             for hit in primary}
+            candidates = [hit for hit in candidates
+                          if (hit["source_id"], hit["snapshot_id"], hit["clause_number"]) not in primary_units
+                          and has_subject_clue(hit)
+                          and len(missing & phrases(direct_statement_text(hit["text"]))) >= 2]
         chosen, units = set(), set()
         for hit in candidates:
             key = hit["source_id"], hit["snapshot_id"], hit["clause_number"]
@@ -594,8 +616,8 @@ class OfficialQAExecutor:
     def read_requirement_supplements(self, result, conditions, source_ids, contexts, evidence,
                                     seen, local_question, local_spacing):
         """已有领域固定读器与唯一概念探查共享本轮预算，不递归读邻接。"""
-        if self.related_reading_hit_ids:
-            return []  # 未核对应关系不触发补查、引用追读或额外候选。
+        if self.related_reading_hit_ids and not any(row["role"] == "MATCH" for row in evidence):
+            return []  # 纯关联阅读不触发补查；混合时主候选仍沿自己的严格补读合同。
         trace, gaps = result["trace"], result["gaps"]
         # 灭火条件的邻接片段不能直接当答案；按原身份补读全部主文和续文。
         supplements, supplement_gaps = (read_fire_supplements(
@@ -799,6 +821,14 @@ class OfficialQAExecutor:
                   or (local_spacing and evidence_key(row) in spacing_keys))]
         # 同一固定阅读单元只拼接一次；所有领域策略共享核心与只读上下文。
         accepted, rejected = self._accepted_unit_keys(usable, conditions)
+        # 新增的关联单元即使拼齐后碰巧满足词组规则，也不能因此变成回答核心，
+        # 或以RELATED_CONTEXT身份进入整理器可用账本。
+        related_keys = {(context["source_id"], context["snapshot_id"],
+                         unit_key(context["selected_clause_coverage"]))
+                        for context in contexts
+                        if context["selected_chunk_id"] in self.related_reading_hit_ids}
+        accepted.difference_update(related_keys)
+        rejected.update(related_keys)
         # 完整性不等于回答资格；语义角色已拒绝的单元仍可读，但不能标成可摘录。
         # 同步公开账本与整理器的实际准入，原文字和固定身份均不变。
         for row in evidence:
@@ -926,10 +956,13 @@ class OfficialQAExecutor:
             gaps.append("来源版本、项目适用性和识别文字尚未完成专业核验。")
             if any("LOW_CONFIDENCE_OCR" in row["warnings"] for row in usable):
                 gaps.append("命中页有低置信度识别文字，数字、单位和否定词需核对原页。")
-        if not items and self.related_reading_hit_ids:
-            result["reading_relation"] = "UNVERIFIED_RETRIEVAL"
-            result["summary"] = "已保留检索到的候选原文和原页；与原问的对应关系尚未核对，本次仅供阅读。"
-            gaps.append("候选来自本次前五，未确认对象、条件或所问要求；未调用整理器或生成自动摘录。")
+        if self.related_reading_hit_ids:
+            if not items and all(row["role"] == "RELATED_CONTEXT" for row in evidence):
+                result["reading_relation"] = "UNVERIFIED_RETRIEVAL"
+                result["summary"] = "已保留检索到的候选原文和原页；与原问的对应关系尚未核对，本次仅供阅读。"
+                gaps.append("候选来自本次前五，未确认对象、条件或所问要求；未调用整理器或生成自动摘录。")
+            else:
+                gaps.append("另保留补充原问词组的关联阅读候选；尚未核对对应关系，未将其作为回答依据。")
         # 已完成输出前的原件/权限复核；原表组仅提供当前账本里的固定阅读出处。
         result["context_groups"].extend(build_table_groups(contexts, evidence))
         result["context_groups"].extend(build_clause_groups(contexts, evidence))
