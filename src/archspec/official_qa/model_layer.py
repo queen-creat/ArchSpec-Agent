@@ -239,7 +239,7 @@ class OfficialModelQAService:
                     "仅用于本机相关原文阅读，不改原问，不授权引用或数值答案，也不生成外部查询。"
                     "只有BUILDING_HEIGHT/MEASUREMENT_METHOD可用非null的focus，其他组合必须focus=null。"
                     "CLEAR时可使用query_focus核对原问角色；已登记主题仍保留该额外约束，subjects/attributes/actions各最多3项，"
-                    "对象和属性逐字摘取原问中2至32字连续词组，动作1至32字，subjects至少一项。"
+                    "对象和属性逐字摘取原问中1至32字连续词组；单字仅限中文实质对象或性质，不取数字、字母或提问虚词。动作1至32字，subjects至少一项。"
                     "subjects不是名词清单，而是本问直接核对的最小独立对象；"
                     "并列对象才列多项，不能把用途背景连写进对象。"
                     "attributes放所问性质、位置或设施类别，不能把它们重复列为subjects，不能列要求、规定、规范等通用提问词；无实质属性时给[]。"

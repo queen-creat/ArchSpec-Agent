@@ -6,7 +6,7 @@ from copy import deepcopy
 from dataclasses import dataclass, field, fields
 from typing import Annotated, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from pydantic import AfterValidator, BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from archspec.official_documents.clause_units import ARTICLE, CLAUSE
 from archspec.official_qa.condition_checks import query_conditions
@@ -89,7 +89,17 @@ class SnapshotRecord:
                 and not (field.metadata.get("omit_empty") and not getattr(self, field.name))}
 
 
-FocusPhrase = Annotated[str, Field(min_length=2, max_length=32)]
+def _literal_focus_phrase(value):
+    """单字中文可为实质对象/性质；不扩到单个数字、字母或已有提问虚词。"""
+    if len(value) == 1:
+        from archspec.official_documents.reference_relevance import QUESTION_FILLERS
+
+        if not re.fullmatch(r"[㐀-鿿]", value) or QUESTION_FILLERS.fullmatch(value):
+            raise ValueError("单字焦点必须是原问中的中文实质词")
+    return value
+
+
+FocusPhrase = Annotated[str, Field(min_length=1, max_length=32), AfterValidator(_literal_focus_phrase)]
 # 动作不参与对象/属性相关性门槛，中文“放、装、开”等一字动词仍须绑定原问。
 FocusAction = Annotated[str, Field(min_length=1, max_length=32)]
 
@@ -176,7 +186,7 @@ class ReadingRoleAlias(BaseModel):
     """专业表达仅绑定原问角色，不承载数值、来源或适用条件。"""
     model_config = ConfigDict(extra="forbid", frozen=True, str_strip_whitespace=True)
     role: Literal["subjects", "attributes"]
-    original: Annotated[str, Field(min_length=2, max_length=32)]
+    original: FocusPhrase
     term: Annotated[str, Field(pattern=r"^[\u3400-\u9fffA-Za-z]{2,32}$")]
 
 
