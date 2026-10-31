@@ -395,11 +395,18 @@ def _literal_measurement_focus(query):
     compact = re.sub(r"\s+", "", query)
     match = re.fullmatch(
         r"(?:请问|请查|帮我查)?(?P<subject>[\u4e00-\u9fffA-Za-z0-9·]{2,32}?)的?"
-        r"(?P<action>从(?:哪里|哪儿|哪)(?:开始)?量|怎么(?:测量|量取|量)|如何(?:测量|量取)|量法(?:是什么)?)"
+        r"(?P<action>从(?:哪里|哪儿|哪)(?:开始)?量(?:到(?:哪里|哪儿|哪)(?:为止)?)?|怎么(?:测量|量取|量)|如何(?:测量|量取)|量法(?:是什么)?)"
         r"[？?。]?", compact)
     if match is None or re.search(r"[和与及或、]|是否|能否|多少|几米", match["subject"]):
         return None
-    return {"subjects": [match["subject"]], "attributes": [], "actions": [match["action"]]}
+    subject = match["subject"]
+    # 无明确性质的指代对象不能被本地语法抢先认作完整测量对象，仍交模型/补充。
+    # 已登记量值主题明确时保留量法操作，不能退回对应主题的限值回答。
+    if (re.match(r"^(?:这|那|本|此|该)", subject) and "的" not in subject
+            and not net_height_question(subject) and not fire_area_question(subject)
+            and not re.search(r"采光|日照", subject)):
+        return None
+    return {"subjects": [subject], "attributes": [], "actions": [match["action"]]}
 
 
 class LocalPlanner:
@@ -431,9 +438,11 @@ class LocalPlanner:
                 and explicit_reference_lookup(query)):
             operation = "REFERENCE_LOOKUP"
         literal = (_literal_measurement_focus(query)
-                   if topic == "UNKNOWN" and allow_reference_focus else None)
+                   if allow_reference_focus and topic not in {"EXACT_REFERENCE", "BUILDING_HEIGHT"} else None)
         if literal is not None:
-            operation = "MEASUREMENT_METHOD"
+            # 明确问量法不等于问主题限值；缺少该专题量法政策时走通用量法核对。
+            # 原对象原字保留，不推定数值、工程条件或另一个专业主题。
+            topic, operation, focus = "UNKNOWN", "MEASUREMENT_METHOD", None
         elif topic == "UNKNOWN" and allow_reference_focus:
             literal = _literal_reference_focus(query) or _literal_indexed_reference_focus(query)
         return ModelSemanticProposal(topic=topic, operation=operation, focus=focus,
@@ -471,6 +480,13 @@ def bind_literal_model_intent(proposal, query, public_conditions):
         # 同一对象的原问量法优先于附加专题或遗漏的操作，也兼容旧的已补焦点恢复记录。
         payload.update(topic="UNKNOWN", operation="MEASUREMENT_METHOD")
         rule = "LITERAL_OBJECT_MEASUREMENT_V1"
+    elif (literal["operation"] == "MEASUREMENT_METHOD"
+            and proposal.operation != "MEASUREMENT_METHOD"):
+        # 模型即使把明确量法分到已登记限值主题，也不能让限值原文代答量法。
+        # 角色改绑仅使用同一原问的完整对象；清除旧角色提示，不借模型补事实。
+        payload.update(topic="UNKNOWN", operation="MEASUREMENT_METHOD", focus=None,
+                       query_focus=focus, local_reading_terms=[], local_reading_aliases=[])
+        rule = "EXPLICIT_MEASUREMENT_BEFORE_LIMIT_V1"
     else:
         return proposal, {}
     bound = ModelSemanticProposal.model_validate(payload)
