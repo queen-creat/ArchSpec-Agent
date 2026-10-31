@@ -1122,14 +1122,16 @@ class OfficialDocumentService:
 
         unit = named_unit(rows, selected_index) if clause is None else None
         from archspec.official_documents.clause_units import clause_indices, scanned_clause_gaps
+        from archspec.official_documents.document_sections import document_section, section_rows
 
-        same_clause = (clause_indices(rows, selected_index) if clause
+        group_rows = section_rows(record)
+        same_clause = (clause_indices(group_rows, selected_index) if clause
                        else unit["indices"] if unit else [selected_index])
         # 唯一发现器扫描固定正文一次；两种兼容入口只消费同一关系草稿。
         from archspec.official_documents.evidence_relations import discover_relations
 
         relations = discover_relations(source_id, snapshot_id,
-            [{**row, "index": i, "selected": i in same_clause} for i, row in enumerate(rows)])
+            [{**row, "index": i, "selected": i in same_clause} for i, row in enumerate(group_rows)])
         from archspec.official_documents.evidence_relations import unconfirmed_table_parents
 
         foreign_tables = unconfirmed_table_parents(
@@ -1138,6 +1140,11 @@ class OfficialDocumentService:
                             "message": "固定条号与未被正文引用的表题归属尚未核对；可能存在识别漏条号，仅供原页查阅。"}
                            for number in foreign_tables]
         boundary_issues.extend(scanned_clause_gaps(record, same_clause))
+        section = document_section(record, min(rows[i]["page_start"] for i in same_clause),
+                                   max(rows[i]["page_end"] for i in same_clause))
+        if section and section["kind"] in {"COMMENTARY", "MIXED"}:
+            boundary_issues.append({"kind": "COMMENTARY_REFERENCE_ONLY",
+                "message": "所选片段包含条文说明，仅供对照阅读，不能当作规范正文要求。"})
         # 优先同号完整续文，再追条文明确提到的原表，最后补相邻片段。
         table_indices, table_refs, tables_omitted = table_context(rows, record["pages"], same_clause,
             source_id=source_id, snapshot_id=snapshot_id, relations=relations)
@@ -1186,6 +1193,7 @@ class OfficialDocumentService:
         return {
             "source_id": source_id, "snapshot_id": snapshot_id,
             "selected_chunk_id": chunk_id, "title": record["title"],
+            **({"document_section": section} if section else {}),
             "source_format": record.get("source_format", "PDF"),
             "standard_code": record["standard_code"], "source_url": record["page_url"],
             "snapshot_fingerprint": hashlib.sha256(content).hexdigest(),

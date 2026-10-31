@@ -26,6 +26,8 @@ def clause_runs(rows):
         adjacent = (valid and start is None and previous is not None and current is not None
             and index == previous[0] + 1 and number == previous[1].get("clause_number")
             and row.get("heading_path") == previous[1].get("heading_path")
+            and row.get("document_part") != "MIXED"
+            and row.get("document_part") == previous[1].get("document_part")
             and not DIRECTORY.search(row["text"])
             and not DIRECTORY.search(previous[1]["text"]))
         if not valid:

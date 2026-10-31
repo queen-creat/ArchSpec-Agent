@@ -48,6 +48,13 @@ class TransientSearchSnapshot(dict):
     def __init__(self, record):
         super().__init__(search_projection(record))
         self.snapshot_sha256 = hashlib.sha256(canonical(record)).hexdigest()
+        from archspec.official_documents.document_sections import commentary_boundary
+
+        self._commentary_boundary_page = commentary_boundary(record)
+
+    @property
+    def commentary_boundary_page(self):
+        return self._commentary_boundary_page
 
     def matches_full_snapshot(self, record):
         # 原页即使不参与排名也属于固定身份；不能仅比条文而忽略其变化。
@@ -66,6 +73,10 @@ class IndexedSnapshot(dict):
         self["pages"] = json.loads(view.page_summary_json)
         self.view = view
 
+    @property
+    def commentary_boundary_page(self):
+        return self.view.commentary_boundary_page
+
 
 @dataclass(frozen=True, slots=True)
 class SnapshotReadView:
@@ -80,6 +91,7 @@ class SnapshotReadView:
     canonical_snapshot: bytes = field(repr=False)
     content_manifest_sha256: str
     quality_unverified: bool
+    commentary_boundary_page: int | None = None
 
     def header(self):
         return json.loads(self.header_json)
@@ -144,6 +156,8 @@ class SnapshotReadViews:
             or self.byte_count + size > 32 * 1024 * 1024
         ):
             return
+        from archspec.official_documents.document_sections import commentary_boundary
+
         view = SnapshotReadView(
             path,
             source_id,
@@ -167,6 +181,7 @@ class SnapshotReadViews:
                 page.get("warnings") or str(page.get("method", "")).upper() == "OCR"
                 for page in record["pages"]
             ),
+            commentary_boundary_page=commentary_boundary(record),
         )
         # 哈希与序列化在锁外执行；纳入身份和容量结算必须原子完成，不能替换在读视图。
         with self._publication_lock:

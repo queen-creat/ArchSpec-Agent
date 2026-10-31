@@ -11,6 +11,11 @@ from uuid import uuid4
 
 from archspec.documents.models import DocumentChunkRecord
 from archspec.official_documents.clause_units import CLAUSE, clause_runs
+from archspec.official_documents.document_sections import (
+    document_section,
+    prefer_primary_clauses,
+    section_rows,
+)
 from archspec.search.bm25 import BM25Searcher
 from archspec.search.tokenizer import LexicalTokenizer
 
@@ -21,11 +26,11 @@ CLAUSE_PATTERN = re.compile(r"\d+(?:\.\d+){2,3}")
 def algorithm_identifiers():
     """成绩绑定实际排序、分词和BM25实现；改算法后旧门槛不能继续生效。"""
     from archspec.documents import chunker
-    from archspec.official_documents import clause_units
+    from archspec.official_documents import clause_units, document_sections
     from archspec.search import bm25, tokenizer
 
     files = [Path(__file__), Path(bm25.__file__), Path(tokenizer.__file__),
-             Path(clause_units.__file__), Path(chunker.__file__)]
+             Path(clause_units.__file__), Path(chunker.__file__), Path(document_sections.__file__)]
     fingerprint = hashlib.sha256(b"".join(path.read_bytes() for path in files)).hexdigest()
     return {"V1": f"BM25_UNIFIED_V1:{fingerprint}", "V2": f"BM25_UNIFIED_V2:{fingerprint}"}
 
@@ -126,7 +131,7 @@ def _unique_clauses(hits, origins, chunks):
         source = origins[chunk.id]
         identity = source["source_id"], source["snapshot_id"]
         if identity not in runs:
-            runs[identity] = clause_runs(source["chunks"])
+            runs[identity] = clause_runs(section_rows(source))
         index = int(chunk.id.rsplit(":", 1)[1])
         if index in runs[identity]:
             key = (*identity, runs[identity][index][0])
@@ -164,7 +169,9 @@ def _result(snapshot, chunk, score):
     for page in snapshot["pages"]:
         if chunk.page_start <= page["pdf_page"] <= chunk.page_end:
             warnings.update(page["warnings"])
+    section = document_section(snapshot, chunk.page_start, chunk.page_end)
     return {
+        **({"document_section": section} if section else {}),
         "id": chunk.id,
         "snapshot_id": snapshot["snapshot_id"],
         "source_id": snapshot["source_id"],
@@ -328,6 +335,9 @@ def search_snapshots(snapshots: list[dict], query: str, top_k: int,
             hits, deferred = _diverse_reading_hits(hits, origins, preferred)
             diversity = {"method": "DISTINCT_ORIGINAL_READING_V1",
                          "deferred_alias_ids": [chunk.id for chunk, _ in raw if chunk.id in deferred]}
+        section_swaps = []
+        if "条文说明" not in raw_query:
+            hits, section_swaps = prefer_primary_clauses(hits, origins)
         fields = ("id", "source_id", "snapshot_id", "clause_number", "page_start", "page_end")
         raw_rows = [_result(origins[chunk.id], chunk, score) for chunk, score in raw]
         selection = {"method": "READING_PRIORITY_V1", "limit": top_k,
@@ -335,6 +345,8 @@ def search_snapshots(snapshots: list[dict], query: str, top_k: int,
                      "ranking_queries": 1 + int(raw_query != query),
                      "raw_hits": [{key: row.get(key) for key in fields} for row in raw_rows],
                      "preferred_ids": [chunk.id for chunk, _ in hits[:top_k] if chunk.id in preferred]}
+        if section_swaps:
+            selection["section_priority"] = {"method": "PRIMARY_COUNTERPART_V1", "swaps": section_swaps}
         if alias_ids:
             selection["role_alias_ids"] = [chunk.id for chunk, _ in hits[:top_k] if chunk.id in alias_ids]
         if diversity is not None:
