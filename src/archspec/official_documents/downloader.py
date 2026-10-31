@@ -15,6 +15,7 @@ from archspec.official_documents.government_urls import (
     GATEWAY_PATH,
     validate_gateway_download,
     validate_government_pair,
+    validate_government_url,
 )
 from archspec.official_documents.local_policy import ATTACHMENTS, reviewed_attachment
 from archspec.official_http import official_http_client
@@ -58,11 +59,13 @@ def _validate_redirect_url(url: str, allowed_hosts: set[str], *, page_url=None) 
 @contextmanager
 def _pdf_response(url, client, max_bytes, *, page_url=None):
     validate_attachment_url(url, allow_legacy=True, page_url=page_url)
-    # 动态政府副本仍限于初始附件同站，登记的跨站配对沿用旧规则。
+    # 初始附件仍须与发布页同站绑定；只允许真实响应逐跳委托，不接受独立跨站输入。
     allowed_hosts = MOHURD_HOSTS if urlsplit(url).hostname in MOHURD_HOSTS else {urlsplit(url).hostname}
     local = reviewed_attachment(url)
     if local is not None:
         allowed_hosts = {urlsplit(local.pdf_url).hostname}
+    # 精确审核来源继续走原有精确目标表；普通字节入口也不扩大信任域。
+    delegated_government = page_url is not None and local is None
     owned_client = client is None
     client = client or official_http_client(timeout=30, follow_redirects=False)
     try:
@@ -80,6 +83,11 @@ def _pdf_response(url, client, max_bytes, *, page_url=None):
                     destination = urljoin(url, target)
                     if local is not None and destination not in local.redirect_targets:
                         raise ValueError("地方附件跳转未在精确审核配对中登记")
+                    if delegated_government:
+                        # TLS政府响应的Location只授予本次有界取件；不登记全局域名、
+                        # 不证明正文身份/效力，也不替代后续题名、原件与许可核验。
+                        validate_government_url(destination)
+                        allowed_hosts = {urlsplit(destination).hostname}
                     url = destination
                     _validate_redirect_url(url, allowed_hosts, page_url=page_url)
                     continue

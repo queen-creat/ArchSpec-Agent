@@ -97,7 +97,7 @@
     "src/archspec/official_documents/compute_worker.py": "b0f2c2f55aafc5ee7b3e32a88659c704b8cf7571020dc50deacd0ca75591002c",
     "src/archspec/official_documents/document_sections.py": "b932bee622841db20ae0d970a87d26857b673ff51f5c73d2f6574903ddce10b9",
     "src/archspec/official_documents/download_errors.py": "fc6a95212289342a2cc68858cfdea461b9b039d7ed945faee8e7ab7114f05933",
-    "src/archspec/official_documents/downloader.py": "5b9f5c372b4bc3b60fbb96b789efc7046af500d05bca729105368d3f55a578db",
+    "src/archspec/official_documents/downloader.py": "083e5dcc0a3230b801fd1587c3134e20168d51dc5befd7701245666767144f49",
     "src/archspec/official_documents/evidence_relations.py": "6e2d4e8d73003f933e7eeff02f547636537630a87c26aa8f0a20714f8628a4c5",
     "src/archspec/official_documents/fallbacks.py": "92e39fac6a86430aa52b2561873661ec108575909c1dc1d70bfaa6d994240308",
     "src/archspec/official_documents/fetch_node.py": "45a40ee211242a9e8346f90d93b2148408d49963e86b32a5dd0f57ccac5b4adb",
