@@ -20,7 +20,9 @@ CATEGORY_ID = "cc5c27d3eb894fd79cc47e72497ef2bf"  # 官网“信息公开”栏�
 CODE_PATTERN = r"(?:GB|JGJ|CJJ)(?:/T)?\s*\d+(?:\.\d+)?-\d{4}"
 MAX_BYTES = 2 * 1024 * 1024
 MAX_CHANGE_EVIDENCE_CHARS = 32000
-APPROVAL = re.compile(r"现(?:批准|发布)\s*《([^》]+)》([^。]{0,200})")
+# 官网既有“现批准《…》”和“现批准国家/行业标准《…》”两种主批准句。
+# 仅接受明确类别，不从新闻介绍、拟批准或地方标准猜国家公告身份。
+APPROVAL = re.compile(r"现(?:批准|发布)\s*(?:(?:国家|行业)标准\s*)?《([^》]+)》([^。]{0,200})")
 
 
 class PageParser(HTMLParser):
