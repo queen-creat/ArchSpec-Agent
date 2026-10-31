@@ -100,10 +100,20 @@ class DocumentChunker:
                              if block.page_number is not None
                              and ANNEX_TABLE_CAPTION.fullmatch(block.text)}
         seen_body_numbers = set()
+        unresolved = self._unresolved_numeric_boundaries(expanded_blocks)
 
         for index, block in enumerate(expanded_blocks):
             text = block.text.strip()
             if not text:
+                continue
+
+            if index in unresolved:
+                drafts.extend(self._finish(pending))
+                if unresolved[index]:
+                    level_two_heading = text
+                # 连续疑似漏点行只证明应停止沿用旧条；原字保留，不补点或猜新条号。
+                pending = _PendingChunk(texts=[text], pages=self._page_list(block.page_number),
+                    clause_number=None, heading_path=self._heading_path(level_one_heading, level_two_heading))
                 continue
 
             annex_heading = bool(ANNEX_HEADING.fullmatch(level_one_heading or ""))
@@ -202,6 +212,39 @@ class DocumentChunker:
         if not drafts:
             raise NoValidChunks("文档没有生成有效片段")
         return drafts
+
+    @staticmethod
+    def _unresolved_numeric_boundaries(blocks):
+        """短节标题后连续1、2开头的疑似连号只作待核边界，不推定三级编号。"""
+        boundaries = {}
+        parent_pattern = re.compile(r"(?P<number>[1-9]\d*\.\d+)\s+[\u4e00-\u9fff]{2,30}")
+        for index, block in enumerate(blocks):
+            parent = parent_pattern.fullmatch(block.text)
+            if parent is None:
+                continue
+            child_pattern = re.compile(re.escape(parent["number"])
+                + r"(?P<suffix>[1-9]\d?)(?![\d.])\s*(?P<body>[\u4e00-\u9fff].*)$")
+            children = []
+            for offset, following in enumerate(blocks[index+1:index+161], 1):
+                text = following.text
+                child = child_pattern.match(text)
+                if child and re.search(r"应|宜|不得|可以|设置", child["body"]):
+                    if int(child["suffix"]) != len(children) + 1:
+                        break
+                    children.append(index + offset)
+                    # 节后近邻必须先有两个连续独立起点，不能凭单个数值认结构。
+                    if len(children) == 2 and offset > 8:
+                        children = []
+                        break
+                    continue
+                numeric = NUMERIC_HEADING.fullmatch(text)
+                if (clause_start(text) or ANNEX_HEADING.fullmatch(text)
+                        or HEADING_PATTERN.match(text) or numeric and "." in numeric["number"]):
+                    break
+            if len(children) >= 2:
+                boundaries[index] = True
+                boundaries.update(dict.fromkeys(children, False))
+        return boundaries
 
     @staticmethod
     def _confirmed_numeric_heading(match, following):
