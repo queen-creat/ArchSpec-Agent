@@ -140,6 +140,17 @@ def reference_matches(query, text, conditions, *, scope_context=()):
     # 不能把书名中的“布置/面积”等字借给未规定该动作或性质的条文。
     matching_text = text + "\n" + "\n".join(_compact(value) for value in scope_context)
     for value in variants:
+        # 单一明确属性前的限定字不能被覆盖比例吞掉。
+        # 允许正文在对象与部位之间插入谓词，不要求原问整词连写。
+        # 多属性问法保留既有分段规则；这里只核正文，不借书名补对象。
+        metric_pattern = "|".join(map(re.escape, sorted(attributes, key=len, reverse=True)))
+        metrics = list(re.finditer(metric_pattern, value))
+        if len(metrics) == 1:
+            prefix = value[:metrics[0].start()].strip()
+            owner = re.search(r"[\u4e00-\u9fff]{3,}$", prefix)
+            remaining = iter(text)
+            if owner and not all(character in remaining for character in owner[0]):
+                continue
         if any(key in value and not re.search(pattern, text) for key, pattern in attributes.items()):
             continue
         if phrase_match(phrases(value), matching_text):
