@@ -150,6 +150,8 @@ def select_context_evidence(query, contexts, evidence, *, priority_core_keys=())
     # 火灾面积和地方间距有自己的必选条件，混合问法仍沿用既有顺序。
     prioritize = (height_measurement_question(query) and not fire_area_question(query)
                   and not sunlight_spacing_question(query))
+    dependency_keys = (priority_core_keys if not fire_area_question(query)
+                       and not sunlight_spacing_question(query) else ())
     admitted_packet_rows = []
 
     def fits(rows):
@@ -161,9 +163,9 @@ def select_context_evidence(query, contexts, evidence, *, priority_core_keys=())
         seen.update(row["chunk_id"] for row in rows)
         characters += sum(len(row["text"]) for row in rows)
 
-    # 仅既有高度门采用已认可核心的明确同书依赖；其它领域的原表/例外顺序不变。
-    if prioritize and priority_core_keys:
-        for context, packet in _outgoing_packets(contexts, evidence, priority_core_keys):
+    # 已认可完整核心及其一跳依赖共用整包预算；混合条件领域仍保持原顺序。
+    if dependency_keys:
+        for context, packet in _outgoing_packets(contexts, evidence, dependency_keys):
             remaining = [row for row in packet if row["chunk_id"] not in seen]
             if fits(remaining):
                 admit(remaining)
@@ -191,8 +193,29 @@ def select_context_evidence(query, contexts, evidence, *, priority_core_keys=())
         duplicate = key is not None and any(source != row["source_id"] and saved == key
                                             for source, saved in originals)
         (deferred if duplicate else ordinary).append(row)
+    # 优先核心按完整单元回填，避免命中开头占满预算后丢掉自身否定/续文。
+    # 同原件暂缓规则仍先执行；不拆片、不升级邻接角色或补读任何资料。
+    withheld = set()
+    available = seen | {row["chunk_id"] for row in ordinary}
+    all_ids = {row["chunk_id"] for row in evidence}
+    for context in contexts:
+        coverage = context.get("selected_clause_coverage", {})
+        key = context["source_id"], context["snapshot_id"], unit_key(coverage)
+        if prioritize or key not in dependency_keys:
+            continue
+        core = _admitted_packet_core(context, evidence, all_ids)
+        if not core or not {row["chunk_id"] for row in core} <= available:
+            continue
+        remaining = [row for row in core if row["chunk_id"] not in seen]
+        if fits(remaining):
+            admit(remaining)
+        else:
+            withheld.update(row["chunk_id"] for row in remaining)
+            gaps.append(f"《{context['title']}》的完整命中条文超过剩余预算，未截取片段冒充完整正文。")
     # 两组各自保持原顺序；有余量时暂缓入口仍纳入，身份、角色和原文保持原样。
     for row in ordinary + deferred:
+        if row["chunk_id"] in seen or row["chunk_id"] in withheld:
+            continue
         if fits([row]):
             admit([row])
         else:

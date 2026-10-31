@@ -750,7 +750,16 @@ class OfficialQAExecutor:
                       3 if row["chunk_id"] in linked_chunks else 4)
         # 只改变已读证据的预算分配；V1前五不变，计量包中的邻接不能升级为摘录。
         priority_core_keys = set()
-        if (self.parallel_parts or self.policy.height_measurement and not self.policy.fire_area and not local_spacing
+        # 查出处复用同一完整条文认可与原字依赖证明，不靠某类问题的专用词表。
+        reference_reading = (self.plan.operation == "REFERENCE_LOOKUP"
+                             and not self.policy.fire_area and not local_spacing
+                             and not fire_area_question(self.plan.original_query)
+                             and not sunlight_spacing_question(self.plan.original_query))
+        if reference_reading:
+            # 阅读只优先已核完整命中；不借答案主题准入限制隐藏它的原字引用。
+            priority_core_keys = (complete_clause_keys(self.reading_contexts, evidence)
+                                  & {evidence_key(row) for row in evidence if row["role"] == "MATCH"})
+        elif (self.parallel_parts or self.policy.height_measurement and not self.policy.fire_area and not local_spacing
                 and not fire_area_question(self.plan.original_query)
                 and not sunlight_spacing_question(self.plan.original_query)):
             preview, _ = self._accepted_unit_keys(
