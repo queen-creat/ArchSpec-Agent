@@ -309,7 +309,12 @@ class OfficialDocumentService:
                 if len(found) >= 512:
                     raise ValueError("使用条件前序超过读取预算")
                 path = self.cache_dir / source_id / f"{identity}.json"
-                if identity == snapshot_id and not path.exists():
+                original_path = self.cache_dir / "original-only" / source_id / identity / "record.json"
+                if not path.exists() and original_path.exists():
+                    from archspec.official_documents.originals import original_identity
+
+                    record = original_identity(self, source_id, identity)
+                elif identity == snapshot_id and not path.exists():
                     # 最早的旧缓存只有 latest；继续允许旧式只读，不自动迁移。
                     record = self._read_snapshot(source_id)
                     if (record is None or record.get("storage_layout") is not None
@@ -351,6 +356,16 @@ class OfficialDocumentService:
                 parents.append(path.stem)
             if len(parents) > 511:
                 raise ValueError("同文件历史快照超过使用条件读取预算")
+        # 同原件的仅原件快照也是使用条件前序，后续重识别不得洗掉其限制。
+        original_pin = hashlib.sha256(f"ORIGINAL_ONLY_V1\n{source_id}\n{digest}".encode()).hexdigest()
+        original_path = self.cache_dir / "original-only" / source_id / original_pin / "record.json"
+        if original_path.exists() and original_pin != snapshot_id:
+            from archspec.official_documents.originals import original_identity
+
+            original_identity(self, source_id, original_pin)
+            if len(parents) >= 511:
+                raise ValueError("同文件历史快照超过使用条件读取预算")
+            parents.append(original_pin)
         return sorted(parents)
 
     def _source(self, source_id):
@@ -1489,9 +1504,14 @@ class OfficialDocumentService:
             raise ValueError("计算包与固定快照的完整处理身份不同，未发布")
         return spec
 
-    def acquire(self, source_id, refresh=False, progress=None, *, saved_extraction_only=False):
+    def acquire(self, source_id, refresh=False, progress=None, *, saved_extraction_only=False,
+                original_snapshot_id=None):
         if type(saved_extraction_only) is not bool or (saved_extraction_only and refresh):
             raise ValueError("只重切分不能同时刷新下载，处理选择必须明确")
+        if original_snapshot_id is not None:
+            checked_digest(original_snapshot_id)
+            if refresh or saved_extraction_only:
+                raise ValueError("固定原件继续处理不能同时刷新下载或重切分")
         source = self._source(source_id)
         policy = policy_for_source(source)
         if source["kind"] == "UNCONFIRMED":
@@ -1518,11 +1538,18 @@ class OfficialDocumentService:
             folder = self.cache_dir / source_id
             folder.mkdir(parents=True, exist_ok=True)
             store = ProcessingCache(self.cache_dir)
+            reused_original = None
             # 非刷新升版先验证本地原件，不因切分代码变化重新下载。
             if old and not refresh:
                 self._check_cached_file(old, source_id)
                 digest, size_bytes = old["sha256"], old["size_bytes"]
                 raw_path = store.publish_blob(self.raw_file_path(old, source_id), digest)
+            elif original_snapshot_id is not None:
+                from archspec.official_documents.originals import restore_processing_blob
+
+                raw_path, reused_original = restore_processing_blob(
+                    self, source_id, original_snapshot_id, store, folder)
+                digest, size_bytes = reused_original["sha256"], reused_original["size_bytes"]
             elif self.fetch is not None:
                 if progress:
                     progress("DOWNLOADING", {"source_id": source_id})
@@ -1638,6 +1665,12 @@ class OfficialDocumentService:
             pages, chunks = cached["pages"], cached["chunks"]
             if len(pages) != actual_page_count:
                 raise ValueError("缓存提取页数与原文件不一致，未发布完整正文")
+            if reused_original is not None:
+                from archspec.official_documents.originals import get_original, original_identity
+
+                if original_identity(self, source_id, original_snapshot_id) != reused_original:
+                    raise ValueError("处理期间固定原件记录已改变")
+                get_original(self, source_id, original_snapshot_id)
             return self._publish_processed(source, old, old_pointer, spec, digest, size_bytes,
                 raw_path, pages, chunks, checked_at, cache_hit, extraction_cache_hit,
                 saved_extraction_only=saved_extraction_only,

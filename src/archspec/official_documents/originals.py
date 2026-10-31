@@ -173,3 +173,53 @@ def preview_image(documents, record, page):
     if page not in record["preview_pages"]:
         raise LookupError("该页尚无预览，请下载官方原件查看")
     return _read(documents, _folder(documents, record["source_id"], record["snapshot_id"]) / f"page-{page}.png")
+
+
+def original_identity(documents, source_id, snapshot_id):
+    """只读取固定身份供权限谱系使用，避免递归调用整条权限链。"""
+    source = documents._source(source_id)
+    record = json.loads(_read(documents, _folder(documents, source_id, snapshot_id) / "record.json"))
+    digest = checked_digest(record["sha256"])
+    expected = hashlib.sha256(f"ORIGINAL_ONLY_V1\n{source_id}\n{digest}".encode()).hexdigest()
+    if (record.get("source_id") != source_id or record.get("snapshot_id") != snapshot_id
+            or snapshot_id != expected or record.get("body_status") != "ORIGINAL_ONLY"
+            or any(record.get(key) != source.get(key) for key in
+                   ("standard_code", "page_url", "pdf_url"))
+            or record.get("permission_parent_ids")):
+        raise ValueError("固定原件与当前登记来源不一致")
+    return record
+
+
+def restore_processing_blob(documents, source_id, snapshot_id, store, folder):
+    """按任务固定原件恢复处理输入；校验分块、整件、当前权限和资源上限。"""
+    from uuid import uuid4
+
+    from archspec.official_documents.original_pages import navigation
+
+    record = original_identity(documents, source_id, snapshot_id)
+    _check_read(documents, record)
+    if navigation(documents, record) is None:
+        raise ValueError("已存原件不在当前正文处理预算内")
+    parts = record.get("parts")
+    if (not isinstance(parts, list) or not 1 <= len(parts) <= 20
+            or any(part.get("file") != f"original-{index:04d}.part"
+                   for index, part in enumerate(parts))):
+        raise ValueError("原件分块身份不完整")
+    temporary = folder / f".saved-original-{uuid4().hex}.part"
+    whole, size = hashlib.sha256(), 0
+    try:
+        with temporary.open("wb") as output:
+            for content in original_parts(documents, record):
+                size += len(content)
+                if size > record["size_bytes"]:
+                    raise ValueError("原件长度与固定记录不一致")
+                whole.update(content)
+                output.write(content)
+        if size != record["size_bytes"] or whole.hexdigest() != record["sha256"]:
+            raise ValueError("原件身份与固定记录不一致")
+        if original_identity(documents, source_id, snapshot_id) != record:
+            raise ValueError("处理期间固定原件记录已改变")
+        _check_read(documents, record)
+        return store.publish_blob(temporary, record["sha256"]), record
+    finally:
+        temporary.unlink(missing_ok=True)

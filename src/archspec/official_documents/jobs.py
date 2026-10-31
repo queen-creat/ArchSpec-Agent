@@ -583,7 +583,12 @@ class AcquisitionService:
                     self._update(job, state, progress=details)
 
         try:
-            result = self.documents.acquire(job["source_id"], refresh=job["refresh"], progress=progress)
+            # 重试保留任务先前固定原件的编号；不扫描目录猜最新，也不重置任务身份。
+            options = {}
+            if job.get("snapshot_id") and not job["refresh"]:
+                options["original_snapshot_id"] = job["snapshot_id"]
+            result = self.documents.acquire(
+                job["source_id"], refresh=job["refresh"], progress=progress, **options)
             with self._lock:
                 self._update(job, "ORIGINAL_ONLY" if result.get("body_status") == "ORIGINAL_ONLY" else "READY",
                              snapshot_id=result["snapshot_id"],
