@@ -52,7 +52,7 @@ def _target(href):
 
 class DuckDuckGoDiscoveryProvider:
     name = 'DUCKDUCKGO'
-    version = 'DUCKDUCKGO_GOV_CLUES_V3'
+    version = 'DUCKDUCKGO_GOV_CLUES_V4'
 
     def __init__(self, *, client=None, proxy_url=None):
         self.client = client

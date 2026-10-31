@@ -109,7 +109,8 @@ def supports_inspection(url):
 
 def inspection_priority(clue, plan):
     """可核网页/PDF先于已知不支持附件；原主文件和地域排序继续复用。"""
-    return (not supports_inspection(clue["url"]), *candidate_priority(clue, plan))
+    priority = candidate_priority(clue, plan)
+    return (priority[0], not supports_inspection(clue["url"]), *priority[1:])
 
 
 def candidate_priority(clue, plan):
