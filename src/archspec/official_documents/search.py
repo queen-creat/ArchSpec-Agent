@@ -181,6 +181,7 @@ def _result(snapshot, chunk, score):
         "title": snapshot["title"],
         "text": chunk.text,
         "clause_number": chunk.clause_number,
+        **({"page_count": snapshot["page_count"]} if "page_count" in snapshot else {}),
         "page_start": chunk.page_start,
         "page_end": chunk.page_end,
         "source_url": snapshot["page_url"],

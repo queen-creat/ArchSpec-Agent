@@ -1,5 +1,6 @@
 // 默认本地问答；明确勾选才走收费模型。出处始终沿用固定快照与原页。
 (() => {
+  const bounds=globalThis.ArchSpecPageBounds;
   const tableLabel=value=>value.startsWith('附表')?value:'表'+value;
   const queryInput = document.querySelector('#pending-query');
   const sourceSelect = document.querySelector('#pending-source');
@@ -574,7 +575,7 @@
       && typeof citation.chunk_id === 'string' && citation.chunk_id.startsWith(`${citation.source_id}:${citation.snapshot_id}:`)
       && /^(0|[1-9]\d{0,5})$/.test(citation.chunk_id.slice(citation.source_id.length + citation.snapshot_id.length + 2))
       && Number.isInteger(citation.page_start) && citation.page_start > 0
-      && Number.isInteger(citation.page_end) && citation.page_end >= citation.page_start && citation.page_end <= 200;
+      && Number.isInteger(citation.page_end) && citation.page_end >= citation.page_start && citation.page_end <= (bounds?bounds.limit(citation):200);
   }
   function citationLabel(citation) {
     const page = `${citation.page_start}${citation.page_end !== citation.page_start ? `—${citation.page_end}` : ''}`;
@@ -588,6 +589,7 @@
         id: citation.chunk_id, source_id: citation.source_id, snapshot_id: citation.snapshot_id,
         title: citation.title, standard_code: citation.standard_code, text,
         clause_number: citation.clause_number, page_start: citation.page_start, page_end: citation.page_end,
+        ...(citation.page_count!==undefined?{page_count:citation.page_count}:{}),
         // 命名单元仍用同一固定片段开原页，真实名称随出处传递，不编造数字条号。
         ...(typeof citation.reading_unit_key === 'string' ? {reading_unit_key:citation.reading_unit_key} : {}),
         ...(typeof citation.reading_unit_label === 'string' ? {reading_unit_label:citation.reading_unit_label} : {}),

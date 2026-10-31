@@ -259,7 +259,7 @@ def search(
 def page_preview(
     source_id: str,
     snapshot_id: Annotated[str, Path(pattern=r"^[a-f0-9]{64}$")],
-    page_number: Annotated[int, Path(ge=1, le=200)],
+    page_number: Annotated[int, Path(ge=1, le=500)],
     service: Annotated[OfficialDocumentService, Depends(get_service)],
     quality: Literal["preview", "reading"] = "preview",
 ):
@@ -356,6 +356,9 @@ def fixed_fragment(
         result = {key: context[key] for key in (
             "source_id", "snapshot_id", "title", "standard_code", "source_url",
             "snapshot_fingerprint", "source_metadata", "source_validity", "source_format")}
+        # 可选字段兼容旧服务夹具；生产上下文的实际页数已经过快照核对。
+        if "page_count" in context:
+            result["page_count"] = context["page_count"]
         result.update(fragment, status="PENDING_REVIEW", evidence_mode="CANDIDATE_ONLY", is_citable=False)
         # 完整原件、固定片段和档案已核；返回前仍核当前读取许可，不复用旧允许结论。
         service._check_reads(source_id, snapshot_id)
@@ -463,7 +466,7 @@ def source_validity(
 def page_reading_layout(
     source_id: str,
     snapshot_id: Annotated[str, Path(pattern=r"^[a-f0-9]{64}$")],
-    page_number: Annotated[int, Path(ge=1, le=200)],
+    page_number: Annotated[int, Path(ge=1, le=500)],
     chunk_id: Annotated[str, Query(min_length=1, max_length=240)],
     response: Response,
     service: Annotated[OfficialDocumentService, Depends(get_service)],
@@ -482,7 +485,7 @@ def page_reading_layout(
 def reread_region(
     source_id: str,
     snapshot_id: Annotated[str, Path(pattern=r"^[a-f0-9]{64}$")],
-    page_number: Annotated[int, Path(ge=1, le=200)],
+    page_number: Annotated[int, Path(ge=1, le=500)],
     request: RereadRequest,
     response: Response,
     service: Annotated[OfficialDocumentService, Depends(get_service)],
@@ -506,7 +509,7 @@ def reread_region(
 def reread_table_cell(
     source_id: str,
     snapshot_id: Annotated[str, Path(pattern=r"^[a-f0-9]{64}$")],
-    page_number: Annotated[int, Path(ge=1, le=200)],
+    page_number: Annotated[int, Path(ge=1, le=500)],
     request: CellRereadRequest,
     response: Response,
     service: Annotated[OfficialDocumentService, Depends(get_service)],

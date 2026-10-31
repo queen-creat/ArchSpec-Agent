@@ -588,6 +588,7 @@ class OfficialQAExecutor:
                     "evidence_id": f"oq_{len(evidence) + 1}", "chunk_id": fragment["id"],
                     **{key: context[key] for key in ("source_id", "snapshot_id", "title", "standard_code", "source_url", "snapshot_fingerprint")},
                     # 来源信息与被引用的固定正文一起走，不在回答阶段查最新版本替换。
+                    **({"page_count": context["page_count"]} if "page_count" in context else {}),
                     "source_metadata": context.get("source_metadata"),
                     "source_validity": context.get("source_validity"),
                     **{key: fragment[key] for key in ("text", "clause_number", "page_start", "page_end", "role", "warnings")},
@@ -670,6 +671,7 @@ class OfficialQAExecutor:
                 evidence.append({
                     "evidence_id": f"oq_{len(evidence) + 1}", "chunk_id": fragment["id"],
                     **{key: context[key] for key in ("source_id", "snapshot_id", "title", "standard_code", "source_url", "snapshot_fingerprint")},
+                    **({"page_count": context["page_count"]} if "page_count" in context else {}),
                     "source_metadata": context.get("source_metadata"),
                     "source_validity": context.get("source_validity"),
                     **{key: fragment[key] for key in ("text", "clause_number", "page_start", "page_end", "role", "warnings")},

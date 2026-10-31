@@ -1,6 +1,7 @@
 """明确同书引用的集中阅读入口；不把关联关系提升为适用性或完整答案。"""
 
 from archspec.official_documents.clause_links import BODY
+from archspec.official_documents.page_bounds import valid_page_range
 from archspec.official_qa.context_groups import IDENTITY, _index
 from archspec.official_qa.question_plan import thaw_value
 from archspec.official_qa.relation_proofs import proof_for_ledger
@@ -19,7 +20,7 @@ def build_clause_groups(contexts, evidence):
                 and isinstance(row.get("standard_code"), str)
                 and row.get("standard_code") == context.get("standard_code") and row.get("role") in {"MATCH", "CONTINUATION", "RELATED_CONTEXT"}
                 and type(row.get("page_start")) is int and type(row.get("page_end")) is int
-                and 1 <= row["page_start"] <= row["page_end"] <= 200
+                and valid_page_range(row, context)
                 and any(fragment.get("id") == row.get("chunk_id") and all(
                     fragment.get(key) == row.get(key) for key in
                     ("text", "clause_number", "page_start", "page_end")) for fragment in context.get("fragments", [])))

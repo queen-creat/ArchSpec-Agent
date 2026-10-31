@@ -1,5 +1,6 @@
 /* 固定书目的条号索引与已有全文查找；预览只供定位，打开仍重读原固定片段。 */
 (function(root,factory){const api=factory();if(typeof module==='object'&&module.exports)module.exports=api;else root.ArchSpecBookIndex=api;})(globalThis,function(){
+ const bounds=globalThis.ArchSpecPageBounds||(typeof require==='function'?require('./page-bounds.js'):null);
  const position=value=>Number.isSafeInteger(value)&&value>=0&&value<=1000000;
  function previewBound(row){return ['preview_start','preview_end','match_start','match_end'].every(key=>position(row[key]))
   &&row.preview_start<=row.match_start&&row.match_start<row.preview_end&&row.match_start<row.match_end
@@ -15,7 +16,7 @@
   &&Array.isArray(body.items)&&body.items.length<=50&&body.items.every(row=>Number.isSafeInteger(row.chunk_index)&&row.chunk_index>=0&&row.chunk_index<=999999
    &&(full&&row.clause_number===null||typeof row.clause_number==='string'&&row.clause_number.length>0&&row.clause_number.length<=120)
    &&typeof row.preview==='string'&&Array.from(row.preview).length<=200&&(!full||previewBound(row))
-   &&Number.isInteger(row.page_start)&&Number.isInteger(row.page_end)&&row.page_start>=1&&row.page_end>=row.page_start&&row.page_end<=200)
+   &&Number.isInteger(row.page_start)&&Number.isInteger(row.page_end)&&row.page_start>=1&&row.page_end>=row.page_start&&row.page_end<=(bounds?bounds.limit(row,body):200))
   &&new Set(body.items.map(row=>row.chunk_index)).size===body.items.length;}
  function controls(doc,item,{isCurrent,onOpen,onUnavailable,summaryText='本书条款索引与全文查找'}={}){
   const node=(tag,text)=>{const n=doc.createElement(tag);n.textContent=text;return n;};

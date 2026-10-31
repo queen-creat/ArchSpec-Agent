@@ -7,6 +7,7 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, StrictInt, model_validator
 
+from archspec.official_documents.page_bounds import valid_page_range
 from archspec.official_documents.processing_cache import publish_json
 from archspec.persistence.business_files import BusinessFilesUnavailable
 
@@ -22,8 +23,9 @@ class ReadingPosition(BaseModel):
     title: str = Field(max_length=300)
     standard_code: str = Field(max_length=120)
     clause_number: str | None = Field(default=None, max_length=120)
-    page_start: StrictInt = Field(ge=1, le=200)
-    page_end: StrictInt = Field(ge=1, le=200)
+    page_count: StrictInt | None = Field(default=None, ge=1, le=500, exclude_if=lambda value: value is None)
+    page_start: StrictInt = Field(ge=1, le=500)
+    page_end: StrictInt = Field(ge=1, le=500)
     role: Literal['MATCH', 'CONTINUATION', 'RELATED_CONTEXT']
 
     @model_validator(mode='after')
@@ -31,7 +33,7 @@ class ReadingPosition(BaseModel):
         prefix = self.source_id+':'+self.snapshot_id+':'
         index = self.chunk_id.removeprefix(prefix)
         if (not self.chunk_id.startswith(prefix) or not index.isascii() or not index.isdecimal()
-                or str(int(index)) != index or int(index) > 999999 or self.page_end < self.page_start):
+                or str(int(index)) != index or int(index) > 999999 or not valid_page_range(self.model_dump(exclude_none=True))):
             raise ValueError('出处位置身份无法核对')
         return self
 

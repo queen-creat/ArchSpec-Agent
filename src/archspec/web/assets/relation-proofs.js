@@ -1,5 +1,6 @@
 // 独立核验指定原字token和固定账本；不扫描原书发现关系。
 (() => {
+  const bounds=globalThis.ArchSpecPageBounds;
   const number=/^(?:\d+(?:\.\d+){2,3}|第[一二三四五六七八九十百千万零〇0-9]+条)$/;
   // 表号保持原字；独立核验器不将连字符表号当数字条号。
   const tableNumber=/^(?:\d+(?:\.\d+){2,3}|\d+-\d+|附表(?:[一二三四五六七八九十百千万零〇]+|\d{1,3}))$/;
@@ -51,7 +52,7 @@
       if(row.source_id!==source||row.snapshot_id!==snapshot||!identities([row.chunk_id])
         ||!['MATCH','CONTINUATION','RELATED_CONTEXT'].includes(row.role)
         ||!Number.isInteger(row.page_start)||!Number.isInteger(row.page_end)
-        ||row.page_start<1||row.page_start>row.page_end||row.page_end>200
+        ||row.page_start<1||row.page_start>row.page_end||row.page_end>(bounds?bounds.limit(row,basis):200)
         ||(typeof row.standard_code!=='string'||row.standard_code!==basis.standard_code)
         ||!['snapshot_fingerprint','title','source_url'].every(key=>row[key]&&row[key]===basis[key]))continue;
       if(Array.isArray(basis.fragments)) {

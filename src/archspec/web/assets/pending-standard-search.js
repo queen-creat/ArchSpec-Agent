@@ -1,5 +1,6 @@
 // 待审核缓存检索独立于正式证据库，不会把候选文字自动升级成已核验依据。
 (() => {
+  const bounds=globalThis.ArchSpecPageBounds;
   const form = document.querySelector("#pending-search-form");
   const input = document.querySelector("#pending-query");
   const button = document.querySelector("#pending-search-button");
@@ -55,7 +56,7 @@
       if (kind === "TEXT" && !fixed) return;
       sessionStorage.setItem("archspec:reading-position",JSON.stringify({query:input.value.trim(),
         scope:sourceSelect?.value,projectId:currentProject(),kind,id:fixed?.id || item.id,
-        source_id:item.source_id,snapshot_id:item.snapshot_id,page,view,...(bookPage?{bookPage:true}:{}),
+        source_id:item.source_id,snapshot_id:item.snapshot_id,page,view,...(item.page_count!==undefined?{page_count:item.page_count}:{}),...(bookPage?{bookPage:true}:{}),
         group:displayGroup,topic:displayTopic,includeRelated,expanded:readingDialog?.open===true}));
     } catch { /* 禁用浏览器存储时仍能正常阅读。 */ }
   }
@@ -392,7 +393,7 @@
     readerMode = view || (original ? "ORIGINAL" : "TEXT");
     original = readerMode === "ORIGINAL";
     let bookRange=original&&globalThis.ArchSpecBookPages?.valid(bookPages,item)?bookPages:null;
-    if(!Number.isInteger(readingPage)||readingPage<1||readingPage>200
+    if(!Number.isInteger(readingPage)||readingPage<1||readingPage>(bounds?bounds.limit(item,bookRange):200)
       ||(readingPage<item.page_start||readingPage>item.page_end)&&(!bookRange||readingPage>bookRange.page_count))readingPage=item.page_start;
     selectedIndex = resultSet?.results.findIndex(candidate => sameEvidence(candidate, item)) ?? -1;
     selectedReadButton = renderedRows.get(selectedIndex)?.read || null;
@@ -407,7 +408,11 @@
     const label = document.createElement("small"); label.className = "reader-state"; label.textContent = "待核验";
     const title = document.createElement("h3"); title.textContent = `${item.title} · ${item.standard_code || "文号待核"}`;
     title.tabIndex = -1;
-    const clause = document.createElement("p"); clause.textContent = `${item.clause_number ? `条款 ${item.clause_number}` : "未识别条款号"} · ${filePageLabel(item)}`;
+    // 只展示服务器从同一固定文档派生的分区，不凭条文措辞推断效力。
+    const sectionKind=item.document_section?.kind;
+    const textLabel=sectionKind==="COMMENTARY"?"条文说明":sectionKind==="MIXED"?"正文与说明":"条文正文";
+    const sectionNote=sectionKind==="COMMENTARY"?" · 条文说明（仅供参考）":sectionKind==="MIXED"?" · 正文与说明（跨分区）":"";
+    const clause = document.createElement("p"); clause.textContent = `${item.clause_number ? `条款 ${item.clause_number}` : "未识别条款号"} · ${filePageLabel(item)}${sectionNote}`;
     heading.append(label, title, clause);
     const previousPlace=readingTrail?.peek();
     if(previousPlace){
@@ -554,7 +559,7 @@
     navigation.append(previous, position, next);
     const tabs = document.createElement("div"); tabs.className = "reader-tabs";
     tabs.setAttribute("role", "tablist"); tabs.setAttribute("aria-label", "阅读方式");
-    const views = [["TEXT", "条文正文", "reader-text-toggle"],
+    const views = [["TEXT", textLabel, "reader-text-toggle"],
       ["OUTLINE", "章节目录", "reader-outline-toggle"],
       ["OTHER", "待辨认片段", "reader-fragments-toggle"],
       ["ORIGINAL", "原页对照", "reader-original-toggle"]];
@@ -1335,7 +1340,7 @@
       || typeof item.id !== "string" || !item.id.startsWith(`${item.source_id}:${item.snapshot_id}:`)
       || !/^(0|[1-9]\d{0,5})$/.test(item.id.slice(item.source_id.length + item.snapshot_id.length + 2))
       || !Number.isInteger(item.page_start) || !Number.isInteger(item.page_end)
-      || item.page_start < 1 || item.page_end < item.page_start || item.page_end > 200
+      || item.page_start < 1 || item.page_end < item.page_start || item.page_end > (bounds?bounds.limit(item):200)
       || typeof item.text !== "string" || !Array.isArray(item.warnings)) return false;
     return true;
   }
@@ -1348,6 +1353,7 @@
     const previous=recordTrail&&userAction&&before&&selectedItem?{
       id:before.id,source_id:selectedItem.source_id,snapshot_id:selectedItem.snapshot_id,
       page:position?.page||selectedItem.page_start,view:readerMode,title:selectedItem.title,
+      ...(selectedItem.page_count!==undefined?{page_count:selectedItem.page_count}:{}),
       clause:selectedItem.clause_number,fingerprint:selectedItem.snapshot_fingerprint,bookPage:position?.bookPage===true}:null;
     const destinationPage=initialPage===undefined?item.page_start:initialPage;
     invalidateSearch({preserveTrail:true});

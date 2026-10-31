@@ -1,5 +1,6 @@
 /* 普通阅读的有限补读；原字与关系证明沿用服务端已有结果，不推断适用结论。 */
 (function(root,factory){const api=factory();if(typeof module==='object'&&module.exports)module.exports=api;else root.ArchSpecReaderContext=api;})(globalThis,function(){
+ const bounds=globalThis.ArchSpecPageBounds||(typeof require==='function'?require('./page-bounds.js'):null);
  function valid(body,item){
   const prefix=item.source_id+':'+item.snapshot_id+':',index=String(item.id||'').split(':').at(-1);
   return body?.source_id===item.source_id&&body.snapshot_id===item.snapshot_id&&body.selected_chunk_id===prefix+index
@@ -11,7 +12,7 @@
    &&body.fragments.every(row=>typeof row.id==='string'&&row.id.startsWith(prefix)&&/^(0|[1-9]\d{0,5})$/.test(row.id.slice(prefix.length))
     &&typeof row.text==='string'&&(row.clause_number==null||typeof row.clause_number==='string'&&row.clause_number.length<=120)
     &&['MATCH','CONTINUATION','RELATED_CONTEXT'].includes(row.role)&&Number.isInteger(row.page_start)&&Number.isInteger(row.page_end)
-    &&row.page_start>=1&&row.page_end>=row.page_start&&row.page_end<=200)
+    &&row.page_start>=1&&row.page_end>=row.page_start&&row.page_end<=(bounds?bounds.limit(row,body):200))
    &&new Set(body.fragments.map(row=>row.id)).size===body.fragments.length
    &&body.fragments.reduce((sum,row)=>sum+Array.from(row.text).length,0)<=16000
    &&body.fragments.some(row=>row.id===body.selected_chunk_id&&row.role==='MATCH'&&row.text===item.text);

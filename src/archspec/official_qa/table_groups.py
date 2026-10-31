@@ -4,6 +4,7 @@ import re
 
 from archspec.official_documents.clause_units import CLAUSE
 from archspec.official_documents.evidence_relations import table_label
+from archspec.official_documents.page_bounds import valid_page_range
 from archspec.official_documents.table_context import TABLE, captions, compact
 from archspec.official_qa.clause_groups import relation_basis
 from archspec.official_qa.context_groups import BODY, IDENTITY, _index
@@ -27,7 +28,7 @@ def build_table_groups(contexts, evidence):
                 and isinstance(row.get("standard_code"), str)
                 and row.get("standard_code") == context.get("standard_code") and row.get("role") in {"MATCH", "CONTINUATION", "RELATED_CONTEXT"}
                 and type(row.get("page_start")) is int and type(row.get("page_end")) is int
-                and 1 <= row["page_start"] <= row["page_end"] <= 200
+                and valid_page_range(row, context)
                 and any(fragment.get("id") == row.get("chunk_id") and all(
                     fragment.get(key) == row.get(key) for key in
                     ("text", "clause_number", "page_start", "page_end"))

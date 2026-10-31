@@ -1,5 +1,6 @@
 /* 历史任务只恢复出处位置；点击后重读当前固定原件，不重放旧回答或收费操作。 */
 (function(root,factory){const api=factory();if(typeof module==='object'&&module.exports)module.exports=api;else root.ArchSpecTaskReadings=api;})(globalThis,function(){
+ const bounds=globalThis.ArchSpecPageBounds||(typeof require==='function'?require('./page-bounds.js'):null);
  function valid(body,task){return body?.schema_version==='QA_TASK_READING_V1'&&body.task_id===task.id&&body.revision===task.revision&&body.project_id===task.project_id
   &&['AVAILABLE','NOT_RECORDED'].includes(body.state)&&Array.isArray(body.positions)&&body.positions.length<=8
   &&(body.state==='AVAILABLE'?body.positions.length>0:body.positions.length===0)
@@ -7,7 +8,7 @@
    &&/^[a-f0-9]{64}$/.test(row.snapshot_fingerprint||'')&&typeof row.chunk_id==='string'&&row.chunk_id.startsWith(row.source_id+':'+row.snapshot_id+':')
    &&/^(0|[1-9]\d{0,5})$/.test(row.chunk_id.split(':').at(-1))&&typeof row.title==='string'&&row.title.length<=300
    &&typeof row.standard_code==='string'&&row.standard_code.length<=120&&(row.clause_number===null||typeof row.clause_number==='string'&&row.clause_number.length<=120)
-   &&['MATCH','CONTINUATION','RELATED_CONTEXT'].includes(row.role)&&Number.isInteger(row.page_start)&&Number.isInteger(row.page_end)&&row.page_start>=1&&row.page_end>=row.page_start&&row.page_end<=200)
+   &&['MATCH','CONTINUATION','RELATED_CONTEXT'].includes(row.role)&&Number.isInteger(row.page_start)&&Number.isInteger(row.page_end)&&row.page_start>=1&&row.page_end>=row.page_start&&row.page_end<=(bounds?bounds.limit(row):200))
   &&new Set(body.positions.map(row=>row.chunk_id)).size===body.positions.length;}
  function create(doc,container,{openPosition}={}){
   const panel=doc.createElement('details');panel.className='qa-task-readings';panel.hidden=true;

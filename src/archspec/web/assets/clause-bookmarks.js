@@ -1,14 +1,15 @@
 /* 收藏保存固定出处的位置与独立个人笔记；正文、许可及原页每次仍由原读取门核对。 */
 (function(root,factory){const api=factory();if(typeof module==='object'&&module.exports)module.exports=api;else {root.ArchSpecBookmarks=api;if(root.document)api.bind(root.document);}})(globalThis,function(){
+ const bounds=globalThis.ArchSpecPageBounds||(typeof require==='function'?require('./page-bounds.js'):null);
  const KEY='archspec:clause-bookmarks:v1';
  function valid(v){return v&&v.version===1&&typeof v.projectId==='string'&&v.projectId.length<=200
   &&/^(gb55031|official-[a-f0-9]{32})$/.test(v.source_id||'')&&/^[a-f0-9]{64}$/.test(v.snapshot_id||'')
   &&Number.isInteger(v.index)&&v.index>=0&&v.index<=999999
   &&typeof v.title==='string'&&v.title.length>0&&v.title.length<=300
   &&typeof v.code==='string'&&v.code.length<=120&&typeof v.clause==='string'&&v.clause.length<=120
-  &&Number.isInteger(v.page)&&v.page>=1&&v.page<=200&&(v.note===undefined||typeof v.note==='string'&&v.note.length<=2000);}
+  &&Number.isInteger(v.page)&&v.page>=1&&v.page<=(bounds?bounds.limit(v):200)&&(v.note===undefined||typeof v.note==='string'&&v.note.length<=2000);}
  const identity=v=>[v.projectId,v.source_id,v.snapshot_id,v.index].join(':');
- function compact(v){return {version:1,projectId:v.projectId,source_id:v.source_id,snapshot_id:v.snapshot_id,index:v.index,title:v.title,code:v.code,clause:v.clause,page:v.page,...(v.note?{note:v.note}:{})};}
+ function compact(v){return {version:1,projectId:v.projectId,source_id:v.source_id,snapshot_id:v.snapshot_id,index:v.index,title:v.title,code:v.code,clause:v.clause,page:v.page,...(v.page_count!==undefined?{page_count:v.page_count}:{}),...(v.note?{note:v.note}:{})};}
  function createStore(storage){
   let rows=[];
   try{const raw=storage?.getItem(KEY);if(raw&&raw.length<=2000000){const data=JSON.parse(raw);if(Array.isArray(data)&&data.length<=100&&data.every(valid))rows=data.map(compact);}}catch{}
@@ -78,7 +79,7 @@
   function button(item){const prefix=item.source_id+':'+item.snapshot_id+':',legacy=item.snapshot_id+':';
    const tail=item.id?.startsWith(prefix)?item.id.slice(prefix.length):item.id?.startsWith(legacy)?item.id.slice(legacy.length):'';
    if(!/^(0|[1-9]\d{0,5})$/.test(tail))return null;
-   const entry={version:1,projectId:project(),source_id:item.source_id,snapshot_id:item.snapshot_id,index:Number(tail),title:item.title,code:item.standard_code||'',clause:item.clause_number||'',page:item.page_start};
+   const entry={version:1,projectId:project(),source_id:item.source_id,snapshot_id:item.snapshot_id,index:Number(tail),title:item.title,code:item.standard_code||'',clause:item.clause_number||'',page:item.page_start,...(item.page_count!==undefined?{page_count:item.page_count}:{})};
    if(!valid(entry))return null;
    const control=doc.createElement('button');control.type='button';control.className='quiet-button reader-bookmark';
    activeControl=control;activeEntry=entry;const paint=paintActive;paint();

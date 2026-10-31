@@ -1059,6 +1059,7 @@ class OfficialDocumentService:
                 "snapshot_fingerprint": hashlib.sha256(content).hexdigest(),
                 "title": record["title"], "standard_code": record["standard_code"],
                 "source_format": record.get("source_format", "PDF"), "query": query.strip(),
+                "page_count": record["page_count"],
                 "offset": offset, "limit": limit, "total": len(entries), "items": items,
                 "next_offset": offset + limit if offset + limit < len(entries) else None,
                 "notice": "仅从当前固定快照已识别条号生成，不是原版完整目录；识别、版本与适用性待核。"}
@@ -1086,6 +1087,7 @@ class OfficialDocumentService:
                 "snapshot_fingerprint": hashlib.sha256(content).hexdigest(),
                 "title": record["title"], "standard_code": record["standard_code"],
                 "source_format": record.get("source_format", "PDF"), "query": query.strip(),
+                "page_count": record["page_count"],
                 "offset": offset, "limit": limit, "total": len(entries),
                 "items": entries[offset:offset + limit],
                 "next_offset": offset + limit if offset + limit < len(entries) else None,
@@ -1161,8 +1163,10 @@ class OfficialDocumentService:
                 gaps.append("上下文达到读取上限；尚有续文或邻接片段未纳入，请继续对照原页。")
                 continue
             characters += len(row["text"])
+            fragment_section = document_section(record, row["page_start"], row["page_end"])
             fragments.append({
                 "id": f"{source_id}:{snapshot_id}:{index}", **row,
+                **({"document_section": fragment_section} if fragment_section else {}),
                 "role": ("MATCH" if index == selected_index else
                          "CONTINUATION" if index in same_clause else "RELATED_CONTEXT"),
                 **({key: unit[key] for key in ("reading_unit_key", "reading_unit_label")}
@@ -1193,6 +1197,7 @@ class OfficialDocumentService:
         return {
             "source_id": source_id, "snapshot_id": snapshot_id,
             "selected_chunk_id": chunk_id, "title": record["title"],
+            "page_count": record["page_count"],
             **({"document_section": section} if section else {}),
             "source_format": record.get("source_format", "PDF"),
             "standard_code": record["standard_code"], "source_url": record["page_url"],

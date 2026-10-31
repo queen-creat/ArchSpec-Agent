@@ -2,6 +2,7 @@
 
 import re
 
+from archspec.official_documents.page_bounds import valid_page_range
 from archspec.official_qa.intents import height_measurement_question
 
 IDENTITY = ("source_id", "snapshot_id", "snapshot_fingerprint", "standard_code")
@@ -65,7 +66,7 @@ def build_context_groups(query, contexts, evidence):
                 or any(not row.get(key) for key in IDENTITY)
                 or type(row.get("page_start")) is not int
                 or type(row.get("page_end")) is not int
-                or not 1 <= row["page_start"] <= row["page_end"] <= 200):
+                or not valid_page_range(row)):
             return False
         return any(
             all(row[key] == context.get(key) for key in IDENTITY)

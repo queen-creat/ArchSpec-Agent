@@ -1,9 +1,10 @@
 /* 本书原页只认固定快照范围；图题导航不产生图示读数、条文关系或现行结论。 */
 (function(root,factory){const api=factory();if(typeof module==='object'&&module.exports)module.exports=api;else root.ArchSpecBookPages=api;})(globalThis,function(){
+ const bounds=globalThis.ArchSpecPageBounds||(typeof require==='function'?require('./page-bounds.js'):null);
  function valid(body,item){return body?.version==='FIXED_BOOK_PAGES_V1'&&body.navigation_only===true
   &&body.source_id===item.source_id&&body.snapshot_id===item.snapshot_id&&body.title===item.title&&body.standard_code===item.standard_code
   &&/^[a-f0-9]{64}$/.test(body.snapshot_fingerprint||'')&&(!item.snapshot_fingerprint||body.snapshot_fingerprint===item.snapshot_fingerprint)
-  &&['PDF','HTML'].includes(body.source_format)&&Number.isInteger(body.page_count)&&body.page_count>=item.page_end&&body.page_count<=200;}
+  &&['PDF','HTML'].includes(body.source_format)&&Number.isInteger(body.page_count)&&body.page_count>=item.page_end&&body.page_count<=(bounds?bounds.limit(body):200);}
  function chunkIdentity(item){
   const id=item.id||item.chunk_id,prefix=item.source_id+':'+item.snapshot_id+':',legacy=item.snapshot_id+':';
   if(typeof id!=='string')return null;const suffix=id.startsWith(prefix)?id.slice(prefix.length):id.startsWith(legacy)?id.slice(legacy.length):'';
