@@ -159,7 +159,7 @@
     "src/archspec/official_qa/daylight_conditions.py": "06b0644d270f81cb38ee0014a6d009fe28994ae4fee80a7eacd926567c0d20d1",
     "src/archspec/official_qa/evidence_bundle.py": "ce79ed8e2924f3efb5fadb15a7755d203063c8f7c59b5cbb293d143a69bd7d76",
     "src/archspec/official_qa/evidence_requirements.py": "d523ddd6d20dcd2118871c423a9442fa6352c7bd838c1f17fbceaf4a2734fc0c",
-    "src/archspec/official_qa/executor.py": "74f422e1f036c96cc7545d18cf3efa7cd09fe313498fcac3f382c818a643163e",
+    "src/archspec/official_qa/executor.py": "ec80c850c239cabaf085769932b51f65d0ee9f74076408fa10a1ccc7e4ca9981",
     "src/archspec/official_qa/fire_page_readings.py": "4e6550cf4b365c645c1b34c5a282e24941341561c4a503c252a7596618ff781d",
     "src/archspec/official_qa/fire_scope.py": "772e693b21ec77c8887651d7b4fbbd49fc278f19f786d2fdfd6c4333b7c2860e",
     "src/archspec/official_qa/fire_supplements.py": "4f8d60a78f53a736db99ac84b790fba4309140356a52690c20bb5f754d52e265",

@@ -386,15 +386,28 @@ class OfficialQAExecutor:
     def _unverified_reading_candidates(self, searched, conditions):
         """只保留本次前五里的两个固定正文入口，不证明问题对应关系。"""
         if (self.plan.topic != "UNKNOWN" or self.plan.operation != "REFERENCE_LOOKUP"
-                or self.parallel_parts or self.plan.explicit_clause_numbers
-                or self.plan.query_focus is not None):
+                or self.parallel_parts or self.plan.explicit_clause_numbers):
             return set()
+        # 焦点只约束对应关系与引用资格，不能单凭焦点存在关闭候选阅读。
+        # 仍仅在无对应候选时沿原来源/正文/双词重叠边界保留最多两条。
+        from archspec.official_documents.reading_scope import (
+            direct_statement_text,
+            main_subject_match,
+        )
         from archspec.official_documents.reference_relevance import phrases
+
+        def has_reading_object(hit):
+            # 明确焦点不能借“根据…确定”的输入对象冒充本条主规定。
+            # 仅检查原字主对象；属性/用途/数值不因此获得回答资格。
+            focus = self.plan.query_focus
+            return not focus or all(main_subject_match(direct_statement_text(hit["text"]), subject)
+                                    for subject in focus["subjects"])
 
         terms = phrases(self.plan.search_query)
         candidates = [hit for hit in searched["results"]
                       if self._source_allowed(hit)
                       and self.policy.matches_source_title(hit.get("title", ""), conditions)
+                      and has_reading_object(hit)
                       and self.policy.is_body(hit["text"], hit.get("clause_number"))
                       and len(terms & phrases(hit["text"])) >= 2]
         preferred = set(searched.get("candidate_selection", {}).get("preferred_ids", ()))
