@@ -156,6 +156,36 @@ def _navigation(page, url, plan, raw):
             "text_sha256": hashlib.sha256(raw).hexdigest(), "body_status": "NOT_ACQUIRED"}
 
 
+def _separate_national_declaration(raw, headings):
+    """只核已定位全文开头的独立书名/完整编号声明，不扫摘要、引用或页脚。"""
+    from archspec.official_documents.web_body import _dom_article_text
+
+    compact = lambda value: re.sub(r"[\s《》〈〉（）()]+", "", value)
+    labels = {compact(PUBLIC_CODE.sub("", heading)) for heading in headings if heading}
+    titles = [title for title in PUBLIC_TITLES if compact(title) in labels]
+    if len(titles) != 1:
+        return None
+    title = titles[0]
+    try:
+        article = _dom_article_text(raw, title, allow_unread_media=True)
+    except ValueError:
+        return None
+    # 书名必须是正文开头；至多四行英文副题，不能跨过中文正文找编号。
+    title_pattern = r"\s*".join(re.escape(letter) for letter in compact(title))
+    pattern = (r"\A\s*[《〈]?\s*" + title_pattern + r"\s*[》〉]?\s*"
+        + r"(?:[A-Za-z][A-Za-z \t/'(),:-]*\s*\n){0,4}\s*[（(]?\s*"
+        + r"(?P<code>" + PUBLIC_CODE.pattern + r")\s*[）)]?(?=\s*(?:\n|$))")
+    match = re.match(pattern, article[:512], re.IGNORECASE)
+    if match is None or match["year"] is None:
+        return None
+    following = article[match.end():].lstrip().splitlines()
+    if (re.search(r"\bdraft\b", match[0], re.IGNORECASE)
+            or following and re.fullmatch(r"[（(]?(?:征求意见稿|草案|送审稿|报批稿)[）)]?", following[0].strip())):
+        raise ValueError("网页开头标明非正式稿件，不能作为正式规范正文")
+    code = extract_public_codes(match["code"])[0]
+    return code, title, match[0].strip()
+
+
 def _local_identity(page, headings, plan):
     """只核实际主标题和其文号字段，不用正文引用清单或第三方摘要确定主文件。"""
     for heading in headings:
@@ -239,7 +269,13 @@ def inspect_government_copy(clue, plan, *, client=None, capture_original=None, c
         page.links.extend(_embedded_attachment_links(html))
         headings = [page.meta.get("articletitle", ""), *page.subject_titles,
                     re.split(r"[-_|]政务公开", page.document_title)[0].strip()]
-        # 只从实际主标题识别主规范，不能拿正文里的引用清单或搜索摘要替代。
+        # 非正式/解读页仅能沿明确正式原文链接继续，不能直接登记其附件或正文。
+        if any(non_rule_notice_title(heading) or re.search(
+                r"征求意见|草案|送审稿|报批稿|局部修订|部分条文|修改单|解读|图解|问答|答疑", heading)
+                for heading in headings if heading):
+            return _navigation(page, url, plan, raw)
+        identity_excerpt = None
+        # 主标题与正文开头独立声明可以共同核身份，摘要和引用清单始终不参与。
         if plan.region is not None:
             try:
                 code, title, observed_heading = _local_identity(page, headings, plan)
@@ -256,10 +292,19 @@ def inspect_government_copy(clue, plan, *, client=None, capture_original=None, c
                 if title and plan.match_source(codes[0], title) == "TARGET":
                     matches.append((codes[0], title))
             matches = list(dict.fromkeys(matches))
-            if len(matches) != 1:
+            declaration = _separate_national_declaration(raw, headings)
+            heading_codes = {code for heading in headings for code in extract_public_codes(heading)}
+            if declaration and heading_codes and (heading_codes != {declaration[0]}):
+                raise ValueError("网页主标题与正文开头编号声明冲突，未选择其中一个版本")
+            if not matches and not heading_codes and declaration and plan.match_source(
+                    declaration[0], declaration[1]) == "TARGET":
+                code, title, identity_excerpt = declaration
+                observed_heading = title
+            elif len(matches) == 1:
+                code, title = matches[0]
+                observed_heading = headings[0] or headings[1]
+            else:
                 raise ValueError("政府发布页主规范暂无法核对，保留搜索线索")
-            code, title = matches[0]
-            observed_heading = headings[0] or headings[1]
         attachments = []
         compact = lambda text: re.sub(r"[\s《》〈〉（）()]+", "", text)
         for link in page.links:
@@ -301,7 +346,7 @@ def inspect_government_copy(clue, plan, *, client=None, capture_original=None, c
                 **({"region": plan.region} if plan.region is not None else {}),
                 "notice_type": "OFFICIAL_COPY", "version_check": "OFFICIAL_COPY_ONLY",
                 "status": "PENDING_REVIEW", "lifecycle_status": "UNKNOWN",
-                "text_sha256": hashlib.sha256(raw).hexdigest(), "evidence_excerpt": observed_heading,
+                "text_sha256": hashlib.sha256(raw).hexdigest(), "evidence_excerpt": identity_excerpt or observed_heading,
                 "attachments": attachments[:10], "full_text_available": False,
                 "warnings": ["政府公开副本；发布机关、版本、现行性及适用条件仍待核对"]}
     finally:

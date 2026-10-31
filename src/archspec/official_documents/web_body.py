@@ -99,7 +99,7 @@ def inspect_web_body(raw: bytes, source: dict) -> dict:
     if parser.containers == 0:
         try:
             text = _dom_article_text(raw, source["title"])
-        except Exception:
+        except Exception:  # noqa: BLE001 -- DOM库异常统一拒绝，不回显远端原文。
             raise ValueError("官方网页正文暂无法解析，保留原件线索") from None
         parser.containers, title_bound = 1, True  # 主标题已独立核验，不把标题强塞进原文。
     if (parser.containers != 1 or parser.has_unread_media or len(text) < 80
@@ -139,13 +139,22 @@ def read_captured_body(documents, source):
 
 
 def html_processing_spec(documents):
-    import pymupdf
     from importlib.metadata import version
+
+    import pymupdf
     base = documents._processing_spec()
     return replace(base, parser_version="official-web-v1:pymupdf-" + pymupdf.VersionBind
                    + ":lxml-" + version("lxml") + ":" + LOADED_SOURCE_IDENTITY.sha256, ocr_version="no-ocr-html-v1",
                    extraction_config={**base.extraction_config, "watermark_lines": [],
-                                      "source_format": "HTML", "css": CSS})
+                                      "source_format": "HTML", "css": CSS,
+                                      "text_identity": "LATIN_LIGATURE_LAYOUT_V1"})
+
+
+def _layout_text_identity(value):
+    """只对照明确的拉丁排版连字，不做NFKC，不折叠数字、标点或其他文字。"""
+    ligatures = str.maketrans({"ﬀ": "ff", "ﬁ": "fi", "ﬂ": "fl", "ﬃ": "ffi",
+                              "ﬄ": "ffl", "ﬅ": "st", "ﬆ": "st"})
+    return "".join(value.translate(ligatures).split())
 
 
 def render_web_body(original: Path, destination: Path, source: dict, max_pages: int) -> dict:
@@ -167,7 +176,7 @@ def render_web_body(original: Path, destination: Path, source: dict, max_pages: 
             count += 1
     with pymupdf.open(temporary) as pdf:
         actual = "".join(page.get_text() for page in pdf)
-        if "".join(actual.split()) != "".join(body["body_text"].split()):
+        if _layout_text_identity(actual) != _layout_text_identity(body["body_text"]):
             raise ValueError("网页排版文字不能完整核对，未发布正文")
         pdf.set_metadata({})
         identity = body["sha256"][:32]
@@ -313,7 +322,7 @@ def acquire_web_body(documents, source, refresh, progress, computation, *, saved
         # 派生资料描述随同一不可变切分载荷保存，共享命中和重启不依赖临时包。
         rendered = cached["rendering"]
         pages, chunks = cached["pages"], cached["chunks"]
-        if "".join(body["body_text"].split()) != "".join("".join(p["text"] for p in pages).split()):
+        if _layout_text_identity(body["body_text"]) != _layout_text_identity("".join(p["text"] for p in pages)):
             raise ValueError("网页正文与提取文字不同，保留原件")
         return documents._publish_processed(source, old, old_pointer, spec, digest, size, raw_path,
             pages, chunks, checked_at, cache_hit, cache_hit, saved_extraction_only=saved_extraction_only,

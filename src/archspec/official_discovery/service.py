@@ -139,7 +139,7 @@ class DiscoveryService:
         local = plan.route == "YICHANG"
         queries, omitted = public_plan["queries"], plan.omitted_query_count
         # 新共同目标及公平调度隔离全部旧查询缓存；原公告和正文快照完全保留。
-        cache_identity = {"version": 8 if local else 20, "plan": public_plan}
+        cache_identity = {"version": 8 if local else 21, "plan": public_plan}
         if plan.route == "UNSUPPORTED_LOCAL":
             # 只隔离地方候选新排序，旧查询档案和全国/已审核来源缓存保持。
             cache_identity["local_notice_priority"] = 1
