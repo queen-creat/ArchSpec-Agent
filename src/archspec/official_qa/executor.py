@@ -404,7 +404,11 @@ class OfficialQAExecutor:
         candidates = [hit for hit in searched["results"]
                       if self._source_allowed(hit)
                       and self.policy.matches_source_title(hit.get("title", ""), conditions)
-                      and self.policy.is_body(hit["text"], hit.get("clause_number"))
+                      # 无条号片段只扩展原有的关联阅读入口；不猜条号或完整性。
+                      # 点线目录仍不进入正文阅读，未知片段不因此变成回答核心。
+                      and (self.policy.is_body(hit["text"], hit.get("clause_number"))
+                           or hit.get("clause_number") is None
+                           and not re.search(r"[.…⋯·]{2,}\s*\d", hit["text"]))
                       and len(terms & phrases(direct_statement_text(hit["text"]))) >= 2]
         preferred = set(searched.get("candidate_selection", {}).get("preferred_ids", ()))
         primary = [hit for hit in searched["results"] if self._source_allowed(hit)
@@ -529,7 +533,7 @@ class OfficialQAExecutor:
             body = (is_body(hit["text"], hit.get("clause_number")) if self.parallel_parts
                     else self.policy.is_body(hit["text"], hit.get("clause_number")))
             related_reading = hit["id"] in self.related_reading_hit_ids
-            if not (body or named_candidate) or not (relevant or related_reading):
+            if not (body or named_candidate or related_reading) or not (relevant or related_reading):
                 continue  # 目录仍留在原检索列表，只是不作规范事实回答。
             if local_spacing and not self.parallel_parts and not spacing_evidence(hit["text"]):
                 continue  # 日照时长与间距公式分别讨论，不改原检索排名。
