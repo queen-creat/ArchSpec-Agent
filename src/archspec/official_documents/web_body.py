@@ -189,12 +189,13 @@ def render_web_body(original: Path, destination: Path, source: dict, max_pages: 
             "page_count": count, "page_semantics": "HTML_RENDERED"}
 
 
-def prepare_web_body_cache(input_html, destination, source, max_pages):
+def prepare_web_body_cache(input_html, destination, source, max_pages, *, full_publication=True):
     """只在独立计算中复用原提取/切分/编码/PNG，不登记来源或审批许可。"""
     from archspec.demo_seed import _prepare_publication_computations
     from archspec.documents.chunker import DocumentChunker, SourceBlock
     from archspec.official_documents.processing_cache import (
         PREPARED_MANIFEST,
+        PREPARED_SCHEMA,
         PUBLICATION_SCHEMA,
         ProcessingCache,
         publish_json,
@@ -221,12 +222,19 @@ def prepare_web_body_cache(input_html, destination, source, max_pages):
     asset = {"url": source["page_url"], "sha256": digest, "size_bytes": input_html.stat().st_size,
              "max_pages": max_pages, "source_format": "HTML",
              **{k: rendered[k] for k in ("rendering_sha256", "rendering_size_bytes")}}
-    publication = _prepare_publication_computations(rendering, root, pages, chunks)
+    # 本机关键词阅读仅需要已核提取与派生PDF；向量/预制PNG只供完整发布包。
+    # 两者复用同一处理身份和导入校验，不伪造向量或改变原件权限。
+    publication = (_prepare_publication_computations(rendering, root, pages, chunks)
+                   if full_publication else None)
+    (root / "publication").mkdir(exist_ok=True)
     rendering.rename(root / "publication" / "rendering.pdf")
-    manifest = {"schema_version": PUBLICATION_SCHEMA, "asset": asset, "identity": spec.identity(digest),
-                "extraction_id": spec.extraction_id(digest), "processing_id": spec.snapshot_id(digest),
-                "page_count": len(pages), "files": files,
-                "publication": publication}
+    manifest = {"schema_version": PUBLICATION_SCHEMA if full_publication else PREPARED_SCHEMA,
+                "asset": asset, "identity": spec.identity(digest),
+                "extraction_id": spec.extraction_id(digest),
+                "processing_id" if full_publication else "snapshot_id": spec.snapshot_id(digest),
+                "page_count": len(pages), "files": files}
+    if full_publication:
+        manifest["publication"] = publication
     publish_json(root / PREPARED_MANIFEST, manifest)
     return manifest
 
@@ -267,6 +275,7 @@ def acquire_web_body(documents, source, refresh, progress, computation, *, saved
         ProcessingCache,
         ProcessingLimited,
         prepared_package,
+        publication_compute_mode,
     )
     from archspec.official_documents.remote_compute import remote_publication
     from archspec.persistence.acquisition_state import AcquisitionLeaseLost
@@ -310,11 +319,14 @@ def acquire_web_body(documents, source, refresh, progress, computation, *, saved
         if cached is None:
             if saved_extraction_only:
                 raise ValueError("已保存网页提取缓存缺失，未重新获取")
+            if publication_compute_mode() == "prepared_only":
+                raise ProcessingLimited()
             work = Path(computation.enter_context(tempfile.TemporaryDirectory(
                 prefix=".web-body-", dir=documents.cache_dir)))
             package = work / "prepared"
             from archspec.official_documents.policy import policy_for_source
-            prepare_web_body_cache(raw_path, package, source, policy_for_source(source).max_pages)
+            prepare_web_body_cache(raw_path, package, source, policy_for_source(source).max_pages,
+                                   full_publication=False)
             computation.enter_context(prepared_package(package, source_page_url=source["page_url"]))
             cached = store.load_snapshot(spec, digest)
         if cached is None:

@@ -141,7 +141,7 @@
     "src/archspec/official_documents/table_cells.py": "947f9a53fc6a2dc328af209aff42781c001072d160308f8fa1e9388a29baec58",
     "src/archspec/official_documents/table_context.py": "96763b3b6e464ba9860e41e17ab65c4f94fb7a7b4e25afb546804b2fc1988775",
     "src/archspec/official_documents/table_lookup.py": "75e88da918e64cc05846f83a7b555065d8aad03d1d7318aa551b08d9a09c5d3f",
-    "src/archspec/official_documents/web_body.py": "d4bc7737bfb241fd1c399d84694a1b94dd08f080864ecf2e5fedc98ab55774ba",
+    "src/archspec/official_documents/web_body.py": "8a3f1cf6e67ae11957164d7d1b10529c02c2e477a1bab680b8bd86a2ba2693ac",
     "src/archspec/official_evaluations/__init__.py": "8dd5a4f0ea777199edb1a3c361fe2e830848f0e01c69be1ea55a6b41568d612a",
     "src/archspec/official_evaluations/revisions.py": "5b41d3732709421347a74c245a40f5212f86d755e01e993e8c826b0dbad1c8f2",
     "src/archspec/official_evaluations/router.py": "1d62bd55721bbbfd4add530c68082cbe1622fc638989284bc03b744d8335e226",
