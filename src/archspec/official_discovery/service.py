@@ -141,6 +141,14 @@ class DiscoveryService:
             raise ValueError("问题最长为 500 个字")
         plan = build_discovery_plan(query, topics, region=region, public_titles=public_titles)
         public_plan = plan.public_dict()
+        if plan.route == "SPLIT_SCOPE_REQUIRED":
+            # 单地域发现链无法同时搜索国家及地方；不调用任何外部服务。
+            now = self.clock().isoformat()
+            return {"id": str(uuid4()), "queries": [], "searches": [], "results": [],
+                    "errors": [], "status": "PARTIAL", "fetched_at": now, "attempted_at": now,
+                    "from_cache": False, "omitted_query_count": 0, "omitted_notice_count": 0,
+                    "limitations": ["请分别查询国家规范和当地规定，以便完整查找两类来源。"],
+                    "discovery_plan": public_plan}
         local = plan.route == "YICHANG"
         queries, omitted = public_plan["queries"], plan.omitted_query_count
         # 新共同目标及公平调度隔离全部旧查询缓存；原公告和正文快照完全保留。

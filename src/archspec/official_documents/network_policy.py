@@ -29,6 +29,9 @@ def network_decision(query, lookup):
                 "message": _MESSAGES["REFERENCE_ONLY"]}
     plan = lookup.get("public_plan") if isinstance(lookup, Mapping) else None
     region = plan.get("region") if isinstance(plan, Mapping) else None
+    if isinstance(plan, Mapping) and plan.get("route") == "SPLIT_SCOPE_REQUIRED":
+        return {"version": VERSION, "required": False, "reason": "SCOPE_REVIEW_REQUIRED",
+                "message": "请分别查询国家规范和当地规定，以便完整查找两类来源。"}
     state = lookup.get("state") if isinstance(lookup, Mapping) else None
     observations = None
     if isinstance(lookup, Mapping) and lookup.get("observations") is not None:

@@ -346,15 +346,34 @@ def _target_region(query):
         return next((names for start, end, names in chains
                      if start <= mention.start() and mention.end() <= end), (mention.group(),))
 
-    destinations, projects, requested = [], [], []
+    # 参考资料的整个短语共用来源角色，包括省市连写和多个并列城市。
+    reference_spans = []
+    for source in re.finditer(r"(?:参考|参照|引用|只有|已有|现有|手头|借用|对照|根据|依据|按照|按)[^，,；;。！？?!\n]*", outside):
+        boundary = re.search(r"用于|适用于|应用于|用在|针对|但|而(?:项目|工程)|帮我找|查询|查找|检索|想查|要查|查|找", source.group())
+        if (re.match(r"(?:根据|依据|按照|按)", source.group())
+                and not re.search(r"本地|本市|本省|当地(?!下)|项目|工程", outside)):
+            continue
+        reference_spans.append((source.start(), source.start() + boundary.start() if boundary else source.end()))
+
+    destinations, projects, requested, unassigned = [], [], [], []
+    # 用户明确要求查找书名号内的资料时，书名地名可以作为指定查询目标。
+    for title in re.finditer(r"《([^》]*)》|〈([^〉]*)〉", query):
+        before_title = query[max(0, title.start() - 16):title.start()]
+        if re.search(r"(?:想查|查询|查找|检索|要查|查)\s*$", before_title):
+            requested.extend(m.group() for m in re.finditer(pattern, title.group()))
     for mention in re.finditer(pattern, outside):
         after = outside[mention.end():mention.end() + 30]
         before = outside[max(0, mention.start() - 24):mention.start()]
         # 应用目的地与引用来源是不同角色，目的地不要求重复写“项目”。
         if re.search(r"(?:用于|适用于|应用于|用在|针对)\s*$", before):
             destinations.extend(target_names(mention))
-        reference = bool(re.search(
-            r"(?:参考|参照|引用|只有|已有|现有|手头|借用|对照)(?:的|是)?\s*$", before))
+        reference = any(start <= mention.start() < end for start, end in reference_spans)
+        # “按照武汉市本地规范”明确指定本地城市；前面已有本市项目则是引用别地资料。
+        if (reference and re.match(r"(?:市|省)?(?:本地|当地)(?:规范|规定|标准)", after)
+                and not re.search(r"本地|本市|本省|当地(?!下)", before)):
+            reference = False
+        if not reference:
+            unassigned.extend(target_names(mention))
         if not reference and re.search(r"(?:想查|查询|查找|检索|要查|查)\s*$", before):
             requested.extend(target_names(mention))
         project = re.match(r"(?:省|市|地区)?([^，,；;。！？?!\n《》]{0,18}?)(?:项目|工程)", after)
@@ -369,8 +388,31 @@ def _target_region(query):
         if not reference and re.search(
                 r"(?:项目|工程)(?:所在地|地点|位置)?(?:是|在|位于|坐落于|设在|：|:)\s*$", before):
             projects.extend(target_names(mention))
-    return unique_region(destinations or projects or requested or
-                         [mention.group() for mention in mentions])
+    chosen = list(destinations + projects if destinations else projects or requested or unassigned)
+    # “武汉与上海项目”中并列地域共同修饰项目，不能只保留后一地。
+    for pair in re.finditer(rf"({pattern})(?:省|市)?\s*(?:和|与|及|、)\s*({pattern})", outside):
+        if (not any(start <= pair.start() < end for start, end in reference_spans)
+                and (pair.group(1) in chosen or pair.group(2) in chosen)):
+            chosen.extend((pair.group(1), pair.group(2)))
+    return unique_region(chosen) if chosen else None
+
+
+def _explicit_unknown_location(query):
+    """当前问题明确没有所在地，不能自动套用已保存的项目地点。"""
+    return bool(re.search(r"(?:项目|工程)?(?:所在地|地点|位置)(?:是|为)?(?:未知|不详|未定|尚未确定|不确定)", query))
+
+
+def _explicit_national_lookup(query):
+    """用户主动查国家或行业来源，与把国标作为参考资料区分。"""
+    return bool(re.search(r"(?:查找|查询|检索|查看|查|只查)\s*(?:国家|全国|国标|GB(?:/T)?\s*\d|JGJ\s*\d|CJJ\s*\d)", query, re.I)
+                or re.match(r"\s*(?:请问|请)?(?:国家规范|国家标准|国标|全国)", query))
+
+
+def _national_scope_requested(query):
+    """明确国家范围或国家行业编号不应由项目登记城市隐式改写。"""
+    codes = extract_public_codes(query)
+    return bool(re.search(r"国家|全国|国标", query) or any(
+        re.match(r"(?:GB|JGJ|CJJ|CECS)(?:/T)?\s*", code, re.I) for code in codes))
 
 
 
@@ -413,11 +455,31 @@ def _build_discovery_plan(query, topics=(), *, region=None, public_titles=()):
     query = requested_content(query)
     if region is not None and region not in (*REGION_NAMES, "地域待补充"):
         raise ValueError("地域不属于已登记公开范围")
-    region = _target_region(query) or region
+    target_region = _target_region(query)
+    region = target_region or region
     # “当地下室……”中的“当”引出条件，“地下室”是建筑部位；
     # 不能在复合词内部截出地域代词“当地”，从而把用户已选的全国规范全过滤掉。
     local_scope = (any(word in query for word in LOCAL_SCOPE_WORDS if word != "当地")
                    or re.search(r"当地(?!下)", query) is not None)
+    deictic_scope = bool(re.search(r"本地|本市|本省|某市|某省|当地(?!下)", query))
+    # “已有某地地方规范，查国家规定”中的地方仅为来源，不是查找范围。
+    national_lookup = _explicit_national_lookup(query)
+    requested_scope = re.sub(r"(?:国家标准|国家规范|国标)(?:可|仅供|供|作为)?参考", "", query)
+    requested_scope = re.sub(r"(?:参考|参照|引用|只有|已有|现有|手头|借用|对照)[^，,；;。！？?!\n]*", "", requested_scope)
+    explicitly_local = bool(re.search(r"当地(?!下)|本地|本市|地方", requested_scope))
+    if explicitly_local and _national_scope_requested(requested_scope):
+        # 单地域计划无法同时表达两类来源；保留城市并要求分开查询。
+        known_region = region if region != "地域待补充" else None
+        return DiscoveryPlan("SPLIT_SCOPE_REQUIRED", known_region, (), (), 0)
+    elif national_lookup:
+        # 同时要求地方与国家时单地域合同无法表达，不能静默丢掉其一。
+        region = "地域待补充" if explicitly_local else None
+        local_scope = explicitly_local
+    elif target_region is None and _national_scope_requested(query) and not deictic_scope:
+        region = None
+        local_scope = False
+    elif target_region is None and _explicit_unknown_location(query):
+        region = "地域待补充"
     if region is None and local_scope:
         region = "地域待补充"
     if region == "宜昌":
@@ -514,6 +576,8 @@ def _build_discovery_plan(query, topics=(), *, region=None, public_titles=()):
 def build_discovery_plan(query, topics=(), *, region=None, public_titles=()):
     """所有消费者共享原问年版；公开词仍有界，原问题不会进入搜索请求。"""
     plan = _build_discovery_plan(query, topics, region=region, public_titles=public_titles)
+    if plan.route == "SPLIT_SCOPE_REQUIRED":
+        return plan
     content = requested_content(query.strip())
     spans = []
     for start, end, targets in _edition_spans(content):
@@ -558,8 +622,16 @@ def resolve_query_region(query, *, project_region=None):
     except ValueError:
         # 纯条号等本地阅读不一定有可外发公共词，不能因此阻断原读取入口。
         explicit = None
+    # 原问明确所在地未知时，不用保存的项目地点代替用户当前输入。
+    if _explicit_national_lookup(query):
+        return explicit
+    if _target_region(query) is None and _explicit_unknown_location(query):
+        return "地域待补充"
     # “当地/本市”只说明需要地方范围，不是另一个明确目的地。
     # 多个明确地名产生的歧义仍须补充，不能用项目城市替用户消解。
+    if (explicit is None and _national_scope_requested(query)
+            and _target_region(query) is None):
+        return None
     if not isinstance(project_region, Mapping):
         return explicit
     if explicit is not None and (explicit != "地域待补充" or _target_region(query) is not None):
