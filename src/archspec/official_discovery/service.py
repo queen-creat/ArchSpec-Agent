@@ -277,9 +277,15 @@ class DiscoveryService:
             queues.extend(native["queues"])
             for clue in native["items"]:
                 found.setdefault(clue["url"], clue)
-        for term_index, term in enumerate(terms if self.external_provider is not None else []):
+        # 备用状态只属于本次发现批次，不能影响其他查询或用户。
+        external_batch = (self.external_provider.new_batch()
+                          if self.external_provider is not None
+                          and callable(getattr(self.external_provider, "new_batch", None))
+                          else self.external_provider)
+        for term_index, term in enumerate(terms if external_batch is not None else []):
             try:
-                response = self.external_provider.search(term)
+                response = external_batch.search(term)
+                provider_name = getattr(external_batch, "active_provider", provider_name)
                 if (not isinstance(response, dict) or not isinstance(response.get("items"), list)
                         or len(response["items"]) > 5):
                     raise TavilyUnavailable("外部搜索线索合同变化")
@@ -297,6 +303,7 @@ class DiscoveryService:
                             clue["score_kind"] = "NOT_CALIBRATED"
                         items.append(clue)
             except NETWORK_ERRORS as error:
+                provider_name = getattr(external_batch, "active_provider", provider_name)
                 failures += 1
                 message = str(error) if isinstance(error, TavilyUnavailable) else "外部搜索未完成，未取得可核对线索"
                 result["external_search"].append({"term": term, "provider": provider_name,

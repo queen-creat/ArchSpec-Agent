@@ -15,6 +15,12 @@ from archspec.official_http import official_http_client
 
 ENDPOINT = 'https://html.duckduckgo.com/html/'
 MAX_BYTES = 1024 * 1024
+BING_ENDPOINT = 'https://cn.bing.com/search'
+
+
+class _FreeSearchConnectionError(TavilyUnavailable):
+    """只用于网络连接故障触发同批备用，不包含验证码或HTTP限制。"""
+
 
 
 def validate_search_proxy(value):
@@ -52,11 +58,14 @@ def _target(href):
 
 class DuckDuckGoDiscoveryProvider:
     name = 'DUCKDUCKGO'
-    version = 'DUCKDUCKGO_GOV_CLUES_V4'
+    version = 'DUCKDUCKGO_BING_GOV_CLUES_V5'
 
     def __init__(self, *, client=None, proxy_url=None):
         self.client = client
         self.proxy_url = validate_search_proxy(proxy_url)
+
+    def new_batch(self):
+        return _FreeSearchBatch(self)
 
     def search(self, term):
         # 沿用唯一公共词校验，原问、项目名、电话和任务书不能进入外部请求。
@@ -81,6 +90,8 @@ class DuckDuckGoDiscoveryProvider:
                 # 此搜索入口为UTF-8；按明确合同解码，避免无meta时HTML库默认成西文。
                 # 解码失败保持错误，不用替换字符或猜编码把损坏页冒充有效线索。
                 tree = html.fromstring(bytes(data).decode('utf-8'))
+            except (httpx.ConnectError, httpx.ConnectTimeout):
+                raise _FreeSearchConnectionError('免费搜索连接未完成，未取得可核对线索') from None
             except (httpx.HTTPError, OSError):
                 raise TavilyUnavailable('免费搜索连接未完成，未取得可核对线索') from None
             except (ValueError, TypeError) as error:
@@ -123,6 +134,77 @@ class DuckDuckGoDiscoveryProvider:
             if self.client is None:
                 client.close()
 
+
+
+class _FreeSearchBatch:
+    """仅在一次发现操作内记录连接失败，不跨请求或用户共享。"""
+    def __init__(self, primary):
+        self.primary = primary
+        self.active_provider = 'DUCKDUCKGO'
+
+    def search(self, term):
+        validate_public_term(term)
+        if self.active_provider == 'DUCKDUCKGO':
+            try:
+                return self.primary.search(term)
+            except _FreeSearchConnectionError:
+                self.active_provider = 'BING'
+        return self._bing(term)
+
+    def _bing(self, term):
+        query = term + ' site:gov.cn'
+        options = {'proxy': self.primary.proxy_url} if self.primary.proxy_url else {}
+        client = self.primary.client or official_http_client(**options)
+        try:
+            try:
+                with client.stream('GET', BING_ENDPOINT, params={'q': query}, timeout=10,
+                                   follow_redirects=False, headers={
+                                       'User-Agent': 'ArchSpec-Agent/0.1 public-official-search'}) as response:
+                    if response.status_code != 200:
+                        raise TavilyUnavailable('备用搜索未完成，未取得可核对线索', stop_batch=True)
+                    data = bytearray()
+                    for part in response.iter_bytes():
+                        if len(data) + len(part) > MAX_BYTES:
+                            raise TavilyUnavailable('备用搜索响应超过上限', stop_batch=True)
+                        data.extend(part)
+                tree = html.fromstring(bytes(data).decode('utf-8'))
+            except (httpx.HTTPError, OSError, UnicodeError):
+                raise TavilyUnavailable('备用搜索连接未完成', stop_batch=True) from None
+            except (ValueError, TypeError) as error:
+                if isinstance(error, TavilyUnavailable):
+                    raise
+                raise TavilyUnavailable('备用搜索响应暂无法核对', stop_batch=True) from None
+            if tree.xpath('//*[contains(translate(@id,"CAPTCHA","captcha"),"captcha") or contains(translate(@class,"CAPTCHA","captcha"),"captcha")]'):
+                raise TavilyUnavailable('备用搜索需要网页验证，本批已停止', stop_batch=True)
+            anchors = tree.xpath('//li[contains(concat(" ",normalize-space(@class)," ")," b_algo ")]//h2/a')
+            if not anchors:
+                raise TavilyUnavailable('备用搜索结果结构尚无法核对', stop_batch=True)
+            items, seen, rejected = [], set(), 0
+            for anchor in anchors[:20]:
+                title = anchor.text_content().strip()
+                try:
+                    target = validate_government_url(anchor.get('href', ''))
+                except ValueError:
+                    target = None
+                if not target or not title or len(title) > 500:
+                    rejected += 1
+                    continue
+                if target in seen:
+                    continue
+                seen.add(target)
+                items.append({'title': title, 'url': target, 'excerpt': '', 'score': 0.0,
+                              'score_kind': 'NOT_CALIBRATED', 'kind': 'SEARCH_SNIPPET',
+                              'body_status': 'NOT_ACQUIRED', 'lifecycle_status': 'UNKNOWN',
+                              'provider': 'BING'})
+            from archspec.official_discovery.government_copies import inspection_priority
+            from archspec.official_discovery.plan import build_discovery_plan
+            plan = build_discovery_plan(term)
+            items = sorted(items, key=lambda clue: inspection_priority(clue, plan))
+            return {'items': items[:5], 'total': len(items[:5]),
+                    'rejected_result_count': rejected, 'search_query': query, 'exact_match': False}
+        finally:
+            if self.primary.client is None:
+                client.close()
 
 def load_free_search_provider(environ=None, *, client=None):
     """显式选择免费路线；Tavily仍由旧工厂优先选择，不能同时增加提供方。"""
