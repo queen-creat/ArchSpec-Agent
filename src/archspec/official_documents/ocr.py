@@ -52,7 +52,8 @@ def recognize_page(page, *, scale=2, max_pixels=16_000_000) -> list[dict]:
     budget = [0, max_pixels]
     rows = _recover_numbered_gaps(page, rows, engine, scale, max_pixels, budget=budget)
     rows = _recover_text_gaps(page, rows, engine, scale, budget)
-    return _recover_table_gaps(page, rows, engine, scale, budget)
+    rows = _recover_table_gaps(page, rows, engine, scale, budget)
+    return _recover_section_start_gaps(page, rows, engine, scale, budget)
 
 
 def _recover_table_gaps(page, rows, engine, scale, budget):
@@ -234,6 +235,102 @@ def _paragraph_column(positioned, before, after, height, page_width):
         return None
     column = max(agreed, key=lambda values: (len(values), max(b[2] for b in values)))
     return min(left, *(b[0] for b in column)), max(right, *(b[2] for b in column))
+
+
+def _recover_section_start_gaps(page, rows, engine, scale, budget):
+    """同节首条缺失时，仅对真实字迹补读，不按缺号补造正文或条号。"""
+    import pymupdf
+
+    output = [dict(row) for row in rows]
+    if page.rotation:
+        return output
+    positioned = [(index, row, box) for index, row in enumerate(output)
+                  if (box := _pixel_bounds(row["box"], scale))]
+    positioned.sort(key=lambda item: item[2][1])
+    for position, (index, heading, bounds) in enumerate(positioned):
+        if budget[0] >= 2:
+            break
+        title = re.fullmatch(r"\s*(\d+)\.(\d+)\s+[^。；;·.…]{2,40}\s*", heading["text"])
+        if not title or not .3 * page.rect.width <= (bounds[0] + bounds[2]) / 2 <= .7 * page.rect.width:
+            continue
+        family = ("clause", int(title[1]), int(title[2]))
+        intervening = []
+        first = None
+        for entry in positioned[position + 1:]:
+            _next_index, row, box = entry
+            if box[1] <= bounds[3]:
+                continue
+            if re.match(r"\s*(?:表|续表|图)\s*\d", row["text"]):
+                break
+            marker = _number_marker(row["text"])
+            if marker:
+                first = (marker, box)
+                break
+            # 其他章节标题或目录引导线不属于本节正文。
+            if re.match(r"\s*\d+\.\d+\s+", row["text"]):
+                break
+            intervening.append(entry)
+        if not first or first[0][0] != family or not 2 <= first[0][1] <= 4:
+            continue
+        after = first[1]
+        if after[0] > page.rect.width * .2 or after[2] < page.rect.width * .5:
+            continue
+        # 只取标题后的第一个缺口，避免已有续行干扰条号识别。
+        upper = min([after[1], *(entry[2][1] for entry in intervening)])
+        padding = max(10, page.rect.width * .03)
+        clip = pymupdf.Rect(max(page.rect.x0, after[0] - padding), bounds[3] + .5,
+                            min(page.rect.x1, after[2] + padding), upper - .5) & page.rect
+        pixels_needed = int(clip.get_area() * 9)
+        if clip.is_empty or clip.height > page.rect.height * .2 or not 0 < pixels_needed <= budget[1]:
+            continue
+        pix = page.get_pixmap(matrix=pymupdf.Matrix(3, 3), clip=clip, alpha=False)
+        pixels = np.frombuffer(pix.samples, dtype=np.uint8).reshape(pix.height, pix.width, pix.n)
+        # 遮去已有OCR框，仅在空白区域确有文字形状时才消耗补读次数。
+        unseen = pixels.copy()
+        for _, _, existing in intervening:
+            x0 = max(0, int(existing[0] * 3) - pix.x - 3)
+            y0 = max(0, int(existing[1] * 3) - pix.y - 3)
+            x1 = min(pix.width, int(existing[2] * 3) - pix.x + 3)
+            y1 = min(pix.height, int(existing[3] * 3) - pix.y + 3)
+            unseen[y0:y1, x0:x1] = 255
+        budget[1] -= pixels_needed
+        if not _has_text_ink(unseen, (after[3] - after[1]) * 3):
+            continue
+        budget[0] += 1
+        output[index]["ocr_gap_status"] = "UNRESOLVED"
+        output[index]["ocr_gap_kind"] = "SECTION_FIRST_CLAUSE"
+        try:
+            recovered = engine(pixels)
+            candidates = (_region_candidates(pix, recovered, clip, output, scale, 3)
+                          if recovered.txts is not None else [])
+            anchors = [row for row in candidates if _number_marker(row["text"]) == (family, 1)]
+            others = [row for row in candidates if _number_marker(row["text"])
+                      and _number_marker(row["text"]) != (family, 1)]
+            if len(anchors) != 1 or others:
+                continue
+            anchor = _pixel_bounds(anchors[0]["box"], scale)
+            body = [row for row in candidates if row is not anchors[0]
+                    and (box := _pixel_bounds(row["box"], scale))
+                    and -2 <= box[0] - anchor[2] <= 2 * (anchor[3] - anchor[1])
+                    and max(box[3] - box[1], anchor[3] - anchor[1])
+                    <= 2 * min(box[3] - box[1], anchor[3] - anchor[1])
+                    and min(box[3], anchor[3]) - max(box[1], anchor[1])
+                    >= .75 * min(box[3] - box[1], anchor[3] - anchor[1])]
+            # 编号与正文须来自同一基线，孤立数字或目录页不能当有效补读。
+            if not body and not clause_start(anchors[0]["text"])["body"].strip():
+                continue
+            output[index]["ocr_gap_status"] = "RECOVERED_NEEDS_REVIEW"
+            accepted = [anchors[0], *body]
+            # 有未归属识别行时不能把部分条文标为已恢复。
+            if len(accepted) != len(candidates):
+                output[index]["ocr_gap_status"] = "UNRESOLVED"
+                continue
+            for candidate in accepted:
+                candidate["ocr_gap_kind"] = "SECTION_FIRST_CLAUSE"
+            output.extend(accepted)
+        except (ValueError, RuntimeError):
+            continue
+    return output
 
 
 def _recover_text_gaps(page, rows, engine, scale, budget):

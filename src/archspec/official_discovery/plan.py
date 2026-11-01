@@ -500,10 +500,13 @@ def _build_discovery_plan(query, topics=(), *, region=None, public_titles=()):
             queries, omitted = plan_queries(query, topics)
         except ValueError:
             queries, omitted = [], 0
-        if region != "地域待补充" and not extract_public_codes(query) and any(
-                word in query for word in ("日照", "间距", "规划", "退让", "容积率", "建筑密度")):
+        # “间距离”中的“间”属于前一名词或方位，“距离”是独立词；
+        # 不跨词把它截成“间距”，例如“卫生间距离”或“房间距离”。
+        spacing = bool(re.search(r"间距(?!离)", query))
+        if region != "地域待补充" and not extract_public_codes(query) and (spacing or any(
+                word in query for word in ("日照", "规划", "退让", "容积率", "建筑密度"))):
             # 三次预算内保留综合文件检索，并用一条固定公共主题寻找专项规定；不发送原问题。
-            sunlight=any(word in query for word in ("日照", "间距"))
+            sunlight = "日照" in query or spacing
             # 日照问题保留综合规定、专项管理、间距主题三路，避免泛规划题名重复占预算。
             terms=(LOCAL_PLANNING_QUERY,LOCAL_SUNLIGHT_TITLES[0] if sunlight else LOCAL_PLANNING_TITLES[3],
                    LOCAL_SUNLIGHT_QUERY if sunlight else LOCAL_PLANNING_TITLES[1])
