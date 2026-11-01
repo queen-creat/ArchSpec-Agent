@@ -4,9 +4,10 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>建筑规范查阅工作台</title>
-  <link rel="stylesheet" href="/assets/project-workbench.css?v=33027a611e56">
-  <link rel="stylesheet" href="/assets/workbench-ui.css?v=50884f931c69">
+  <link rel="stylesheet" href="/assets/project-workbench.css?v=307f08380b20">
+  <link rel="stylesheet" href="/assets/workbench-ui.css?v=f11398385408">
   <link rel="stylesheet" href="/assets/local-pdf.css?v=abef3814fa80">
+  <link rel="stylesheet" href="/assets/neumorphism.css?v=e4cc0018edcc">
 </head>
 <body>
   <a class="skip-to-content" href="#workbench-main">跳到工作区</a>
@@ -72,13 +73,14 @@
     <section class="panel pending-search-panel" id="pending-search-panel" data-workbench-section="search" aria-labelledby="pending-search-title">
       <div class="section-heading search-panel-heading">
         <div><h2 id="pending-search-title">查规范</h2></div>
-        <button class="text-link quiet-button" type="button" data-workbench-view="library" aria-pressed="false">查看规范库 →</button>
+        <button class="text-link quiet-button" type="button" data-workbench-view="library" aria-pressed="false">查看规范库</button>
       </div>
       <p class="section-description">输入问题或条款号，在候选列表中选择一条阅读；需要时再对照原页。</p>
       <div class="workbench-query-toolbar"><form id="pending-search-form" class="pending-search-form">
         <label class="field"><span class="visually-hidden">问题、关键词或完整条款号</span><input id="pending-query" required maxlength="500" placeholder="输入问题、规范名称、编号或条款号"></label>
         <button id="pending-search-button" class="primary-button" type="submit">查找条文</button>
       </form></div>
+      <p class="ai-mode-hint"><span id="workbench-model-state" role="status">正在检查 DeepSeek 配置…</span></p>
       <details id="search-tools" class="search-tools">
         <summary id="search-tools-summary">更多选项</summary>
 
@@ -90,7 +92,7 @@
       </div>
       <div class="official-qa-entry">
         <button id="official-qa-start" class="secondary-button" type="button" aria-expanded="false" aria-controls="official-qa-panel">按出处整理回答</button>
-        <label class="official-qa-model-option"><input id="official-qa-model-enabled" type="checkbox"><span>使用 DeepSeek</span></label>
+        <label class="official-qa-model-option"><input id="official-qa-model-enabled" type="checkbox" checked><span>使用 DeepSeek</span></label>
       </div>
             <details id="multi-source-scope" class="multi-source-scope">
         <summary id="multi-source-summary">自选多本规范</summary>
@@ -103,7 +105,6 @@
       <details id="pending-reading-info" class="pending-result-details pending-reading-info">
         <summary>查阅与处理说明 · 模型发送范围</summary>
       <p id="pending-online-hint" class="pending-online-hint">联网只发送公共规范编号或登记主题，不发送问题原文；单份范围只查缓存。</p>
-        <p><span id="workbench-model-state" role="status">读取模型配置…</span></p>
         <p id="pending-lookup-status" class="pending-lookup-status" role="status" hidden></p>
           <p id="pending-coverage-hint" class="pending-coverage-hint">正在读取已准备的正文清单。</p>
       <p>仅全部正文范围启用。官网查询只使用公共规范编号、登记题名或固定主题，不发送问题原文；宜昌走独立官方入口，单份试查只查缓存。</p>
@@ -156,7 +157,7 @@
       </details>
       <section id="official-qa-panel" class="official-qa-panel" hidden aria-labelledby="official-qa-title">
         <div class="official-qa-heading"><h3 id="official-qa-title">按出处整理回答</h3><button id="official-qa-close" class="quiet-button" type="button">收起</button></div>
-        <p id="official-qa-notice" class="official-qa-notice">本地整理 · 出处待核验</p>
+        <p id="official-qa-notice" class="official-qa-notice">按出处整理 · 对照原页</p>
         <p id="official-qa-state" class="inline-status" role="status"></p>
         <div id="official-qa-task-controls" hidden>
           <p id="official-qa-task-state" class="inline-status" role="status"></p>
@@ -215,7 +216,7 @@
           <summary>仍需核对的原文与前提</summary><div id="official-qa-requirement-items"></div>
         </details>
         <details id="official-qa-context-groups" class="official-qa-context-groups" hidden>
-          <summary id="official-qa-context-group-summary">集中阅读出处（待核验）</summary><div id="official-qa-context-group-items"></div>
+          <summary id="official-qa-context-group-summary">集中阅读出处</summary><div id="official-qa-context-group-items"></div>
         </details>
         <details id="official-qa-context" class="official-qa-context" hidden>
           <summary id="official-qa-context-summary">相关上下文</summary><div id="official-qa-context-items"></div>
@@ -352,7 +353,7 @@
         <details id="project-advanced-tools" class="panel project-advanced-tools" data-project-fold>
           <summary class="advanced-summary">更多项目工具<small>人工资料库检索、可选模型分析与历史审查</small></summary>
       <details class="panel search-panel" aria-labelledby="search-title">
-        <summary class="advanced-summary">人工资料库检索（高级）<small>与首页的官方待核验正文分开，不混用结果</small></summary>
+        <summary class="advanced-summary">人工资料库检索（高级）<small>与首页的官方正文分开，不混用结果</small></summary>
         <div class="advanced-body">
         <div class="section-heading">
           <div><p class="step-label">人工维护的资料</p><h2 id="search-title">人工资料库检索</h2></div>
@@ -603,15 +604,15 @@
   <script src="/assets/page-bounds.js?v=14ed8a2170c1" defer></script>
   <script src="/assets/http-response.js?v=ce02463d9cfd" defer></script>
   <script src="/assets/workbench-presentation.js?v=15ea6c0058dc" defer></script>
-  <script src="/assets/admission-presentation.js?v=78971dd24146" defer></script>
-  <script src="/assets/project-workbench.js?v=eb252945c84e" defer></script>
+  <script src="/assets/admission-presentation.js?v=27e042e9b998" defer></script>
+  <script src="/assets/project-workbench.js?v=901d824187fc" defer></script>
   <script src="/assets/requirement-assessment.js?v=31ea98137d0b" defer></script>
   <script src="/assets/pending-result-presentation.js?v=06301d32a3a9" defer></script>
   <script src="/assets/source-metadata.js?v=a990ff8fff22" defer></script>
   <script src="/assets/table-reading.js?v=30c24f802d68" defer></script>
   <script src="/assets/official-source-inventory.js?v=e74a397d2df1" defer></script>
   <script src="/assets/source-scope.js?v=f3eb7a291e51" defer></script>
-  <script src="/assets/notice-change-reader.js?v=4a45c67fe9f0" defer></script>
+  <script src="/assets/notice-change-reader.js?v=9192d21ff16d" defer></script>
   <script src="/assets/reading-trail.js?v=409b55262823" defer></script>
   <script src="/assets/reader-context.js?v=5ef5e1d3a6b1" defer></script>
   <script src="/assets/standard-mentions.js?v=fc8a04434987" defer></script>
@@ -620,7 +621,7 @@
   <script src="/assets/citation-copy.js?v=8ffecabf7f88" defer></script>
   <script src="/assets/clause-comparison.js?v=7b3ad62f6e2e" defer></script>
   <script src="/assets/clause-bookmarks.js?v=2c2f7100b231" defer></script>
-  <script src="/assets/pending-standard-search.js?v=5026cdae4492" defer></script>
+  <script src="/assets/pending-standard-search.js?v=e6620dacb79c" defer></script>
   <script src="/assets/answer-brief.js?v=82bb85cb345d" defer></script>
   <script src="/assets/page-readings.js?v=ff31f71fef28" defer></script>
   <script src="/assets/relation-proofs.js?v=8ff50dc1d6b4" defer></script>
@@ -628,16 +629,16 @@
   <script src="/assets/condition-presets.js?v=2bab2de13413" defer></script>
   <script src="/assets/question-worklist.js?v=59ef103fe845" defer></script>
   <script src="/assets/qa-reading-record.js?v=ca0cc3c77582" defer></script>
-  <script src="/assets/official-qa.js?v=2deb06654cfc" defer></script>
+  <script src="/assets/official-qa.js?v=05dd01add764" defer></script>
   <script src="/assets/qa-history.js?v=fd235107bb70" defer></script>
   <script src="/assets/workspace-backup.js?v=7782e6aa88ee" defer></script>
   <script src="/assets/local-pdf.js?v=5db453394ddd" defer></script>
-  <script src="/assets/library-inventory.js?v=e1b139018dc5" defer></script>
-  <script src="/assets/official-quality.js?v=b1cf8d420492" defer></script>
+  <script src="/assets/library-inventory.js?v=3dd000007382" defer></script>
+  <script src="/assets/official-quality.js?v=2f4feda1fc44" defer></script>
   <script src="/assets/original-reader.js?v=9eb04e370d20" defer></script>
-  <script src="/assets/official-acquisition.js?v=c9674d37dc26" defer></script>
-  <script src="/assets/official-discovery.js?v=5b4847e38713" defer></script>
+  <script src="/assets/official-acquisition.js?v=120744492099" defer></script>
+  <script src="/assets/official-discovery.js?v=ffa9e91403d1" defer></script>
   <script src="/assets/official-query-flow.js?v=e5a3fe6468e0" defer></script>
-  <script src="/assets/workbench-ui.js?v=54386cb94cab" defer></script>
+  <script src="/assets/workbench-ui.js?v=9391a9b7a411" defer></script>
 </body>
 </html>

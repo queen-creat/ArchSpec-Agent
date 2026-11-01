@@ -1,8 +1,8 @@
-# ArchSpec Agent
+# ArchSpec Agent 1.0
 
 面向建筑设计人员的规范检索与原页阅读工具，在自己的电脑上运行。
 
-输入问题、关键词或条号，查找相关规范，阅读正文并核对出处、原表和原页。已有资料优先在本地检索，需要补充资料时可搜索官方来源；DeepSeek 和 Tavily 可按需配置。
+输入问题、关键词或条号，查找相关规范，阅读正文并核对出处、原表和原页。已有资料优先在本地检索，需要补充资料时可搜索官方来源；默认使用 DeepSeek 理解自然语言问题，Tavily 可按需配置。
 
 ## 主要功能
 
@@ -42,13 +42,25 @@ uv run --frozen --no-dev --offline --no-env-file python scripts/run_local.py --p
 
 ## 模型与搜索配置
 
-基础查找无需 Key。需要模型或 Tavily 搜索时，运行：
+默认 AI 为 **DeepSeek**。每位使用者填写自己的 API Key，无需部署服务器。
 
-```text
-uv run --frozen --no-dev --no-env-file python scripts/run_local.py --prepare-config
-```
+1. 在项目目录执行以下命令，生成本机私有配置：
 
-在生成的本机私有配置中填写自己的 Key。模型请求按所用服务计费；配置文件、规范资料和本机数据库不提交到 GitHub。
+   ```text
+   uv run --frozen --no-dev --no-env-file python scripts/run_local.py --prepare-config
+   ```
+
+2. 用文本编辑器打开 `data/local-access/personal-model.private.env`，填写并保存：
+
+   ```dotenv
+   DEEPSEEK_API_KEY=你的DeepSeek_API_Key
+   ```
+
+3. 启动或重启工作台，输入问题并点击“查找条文”。默认由 DeepSeek 理解问题，再检索资料、补查官方来源并展示出处与原页。只输入书名时可直接打开已有书目。
+
+页面“更多选项”可关闭 DeepSeek，进行本地查阅。未填 Key 时会提示配置步骤，并保留本地检索。模型请求按 DeepSeek 服务计费，受本机累计预算限制；刷新和恢复历史不会自动发起收费请求。Key 只保存在本机服务端，配置文件、规范资料和本机数据库不提交到 GitHub。
+
+Tavily 是可选搜索服务，配置方法见本机使用说明。
 
 完整步骤见[本机使用说明](docs/本机使用.md)。
 

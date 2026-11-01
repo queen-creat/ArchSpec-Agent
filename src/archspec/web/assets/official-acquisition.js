@@ -1,7 +1,7 @@
 // 只展示后台任务，不替系统批准规范版本。下载/识别不占用页面提交请求。
 (() => {
   const active = new Set(["QUEUED", "DOWNLOADING", "PROCESSING"]);
-  const stateLabels = {ORIGINAL_ONLY: "仅原件/待辨认", QUEUED: "排队中", DOWNLOADING: "正在下载", PROCESSING: "正在识别与切分", READY: "已处理 · 待核验", FAILED: "获取失败", INTERRUPTED: "处理被中断", NEEDS_CONFIRMATION: "附件用途待确认", NO_ATTACHMENT: "未找到可获取附件", SKIPPED: "本次不自动获取", LIMIT_REACHED: "达到排队上限"};
+  const stateLabels = {ORIGINAL_ONLY: "仅原件/待辨认", QUEUED: "排队中", DOWNLOADING: "正在下载", PROCESSING: "正在识别与切分", READY: "正文已准备", FAILED: "获取失败", INTERRUPTED: "处理被中断", NEEDS_CONFIRMATION: "附件用途待确认", NO_ATTACHMENT: "未找到可获取附件", SKIPPED: "本次不自动获取", LIMIT_REACHED: "达到排队上限"};
   const kindLabels = {FULL_TEXT: "规范正文", REVISION: "修订附件（不是整本规范）", WITHDRAWAL: "废止条文清单（不是规范正文）", UNCONFIRMED: "用途未确认的附件"};
   function node(tag, text, className = "") {
     const element = document.createElement(tag);
@@ -61,7 +61,7 @@
         if (item.state === "READY") {
           if (item.review_status === "PENDING_RECOGNITION") row.append(node("p", "已取得文字层 · 图片待辨认，请查看原页对照。", "source-warning"));
           row.append(node("p", `${item.cache_hit ? "复用已保存结果，未重复识别" : "已保存处理结果"}${item.finished_at ? ` · 完成：${new Date(item.finished_at).toLocaleString("zh-CN")}` : ""}`, "page-number"));
-          row.append(node("p", "文字、版本与使用范围仍待核验，不是正式设计依据。", "source-warning"));
+          row.append(node("p", "打开原页查看完整内容。", "source-warning"));
           if (item.kind === "FULL_TEXT" && item.source_id) {
             const trial = node("button", "试查这份正文", "secondary-button");
             trial.type = "button";

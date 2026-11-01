@@ -218,7 +218,7 @@
     (data.limitations || []).forEach(text => {
       // 历史公告快照不改写；已关联正文任务时，页面提示按当前功能展示。
       const label = data.acquisition && text.startsWith("附件仅发现链接")
-        ? "公开附件的正文准备情况见任务状态；处理完成仍待核验，也没有调用大模型"
+        ? "公开附件的正文准备情况见任务状态；处理完成后可打开原页，也没有调用大模型"
         : text;
       limitations.append(node("p", label));
     });

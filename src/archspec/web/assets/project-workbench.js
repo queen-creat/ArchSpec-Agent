@@ -190,7 +190,7 @@ function renderMaterialRecommendations(material, report) {
     } else if (standard.verification_status === "FAILED") {
       verification.textContent = "最近核验失败，使用缓存";
     } else {
-      verification.textContent = "题录待核验";
+      verification.textContent = "题录信息";
     }
     card.querySelector(".recommendation-topline").append(verification);
     const link = card.querySelector(".recommendation-link");

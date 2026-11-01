@@ -32,7 +32,7 @@
     coverage.replaceChildren();
     metrics.replaceChildren();
     available = data.evaluation_available === true;
-    const states = {READY: "已准备 · 待核验", NOT_ACQUIRED: "未取得正文", NOT_DISCOVERED: "未覆盖", CACHE_ERROR: "缓存不可读取"};
+    const states = {READY: "正文已准备", NOT_ACQUIRED: "未取得正文", NOT_DISCOVERED: "未覆盖", CACHE_ERROR: "缓存不可读取"};
     (data.coverage || []).forEach(item => {
       const row = document.createElement("li");
       const title = document.createElement("strong");
@@ -67,7 +67,7 @@
       status.textContent = result.status === "STALE"
         ? "旧检查已过期，当前保留原排序；具体原因见检查详情。"
         : !available ? "当前资料或核对记录不可用，暂不生成新成绩。"
-          : passed ? switchAllowed ? "本次定位检查达标，使用已许可的候选排序；条文仍待核验。"
+          : passed ? switchAllowed ? "本次定位检查完成，可以打开原页查阅。"
           : "本次定位检查达标，当前保留原排序；达标不等于新排序更好。"
           : "本次检查未达到全部验收条件，当前保留原排序，不自动改题。";
     } else {

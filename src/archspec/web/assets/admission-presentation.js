@@ -11,7 +11,7 @@ globalThis.ArchSpecAdmissionUI = {
     if (response.admission_notice) return response.admission_notice;
     if (response.results?.length) return "来源准入通过不等于设计合规，项目适用性仍须专业人员复核。";
     const count = response.excluded_documents?.length || 0;
-    return `未找到已通过核验的匹配正文${count ? `；${count} 份资料尚未满足准入条件` : ""}。这不代表没有规范要求，可先试查待核验正文并对照原页。`;
+    return `未找到已通过核验的匹配正文${count ? `；${count} 份资料尚未满足准入条件` : ""}。这不代表没有规范要求，可先查阅正文并对照原页。`;
   },
   statusText(status) {
     if (!status.migrated) return "独立核验记录尚未建立。已有正文仍可作为候选试查，不能自动成为正式依据。";

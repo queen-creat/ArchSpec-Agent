@@ -4,7 +4,7 @@ import os
 from pathlib import Path
 
 TEMPLATES = {
-    'personal-model.private.env': '# 填入自己的模型Key后保存；启动后仍按页面确认与累计预算调用。\nDEEPSEEK_API_KEY=\n',
+    'personal-model.private.env': '# 填入自己的模型Key后保存；主动提交问题后默认使用 DeepSeek，受累计预算限制。\nDEEPSEEK_API_KEY=\n',
     'personal-tavily.private.env': '# 填入自己的搜索Key；确认账号已关闭按量付费后才将下一项改为true。\n'
         'TAVILY_API_KEY=\nARCHSPEC_TAVILY_FREE_ONLY_CONFIRMED=false\n',
 }

@@ -1,4 +1,4 @@
-// 默认本地问答；明确勾选才走收费模型。出处始终沿用固定快照与原页。
+// 默认 DeepSeek 理解问题；主动提交才调用，历史恢复不自动发送。出处沿用固定快照与原页。
 (() => {
   const bounds=globalThis.ArchSpecPageBounds;
   const tableLabel=value=>value.startsWith('附表')?value:'表'+value;
@@ -8,6 +8,7 @@
   const panel = document.querySelector('#official-qa-panel');
   const state = document.querySelector('#official-qa-state');
   const modelOption = document.querySelector('#official-qa-model-enabled');
+  let preferredModelMode=modelOption?.checked===true;
   const notice = document.querySelector('#official-qa-notice');
   const taskControls = document.querySelector('#official-qa-task-controls');
   const taskState = document.querySelector('#official-qa-task-state');
@@ -352,7 +353,7 @@
     }
   }
   function clearOutput() {
-    if(notice) notice.textContent='本地整理 · 出处待核验';
+    if(notice) notice.textContent='按出处整理 · 对照原页';
     fields.forEach(field => {field.reason.textContent = ''; field.reason.hidden = true;});
     answer.replaceChildren(); readingRecord?.replaceChildren(); detailContent.replaceChildren(); contextItems.replaceChildren();
     contextGroupItems?.replaceChildren(); requirementItems?.replaceChildren();
@@ -844,7 +845,7 @@
     contextGroups.hidden = !contextGroupItems.children.length;
     const summary=document.querySelector('#official-qa-context-group-summary');
     if(summary) summary.textContent=body.answer_mode === 'HEIGHT_MEASUREMENT_READING'
-      ? '高度计量 · 相关条款与原页' : '集中阅读出处（待核验）';
+      ? '高度计量 · 相关条款与原页' : '集中阅读出处';
   }
   function render(body, isCurrent, query, requestProject, submitted) {
     conditionPreview=false;retry.textContent=defaultRetryLabel;
@@ -864,7 +865,7 @@
       notice.textContent=status==='MODEL_ERROR' || status==='EVIDENCE_CHECK_FAILED' ? `${label}流程未通过 · ${brief(body.summary,180)}`
         : !understandingReady ? `${label}未完成理解 · ${brief(body.summary,180)}`
         : status==='NEEDS_CONDITIONS' ? `${label}${understanding} · 等待补充条件`
-        : `${label}${understanding} · ${model.selection_called ? '模型已选择证据' : '正文仍在本机整理'} · 出处待核验`;
+        : `${label}${understanding} · ${model.selection_called ? '模型已选择证据' : '正文仍在本机整理'} · 对照原页`;
       const budget=model.budget;
       if(budget && Number.isFinite(budget.reserved_cny) && Number.isFinite(budget.limit_cny)) {
         detailContent.append(node('p','official-qa-step',`开发累计预留 ${budget.reserved_cny.toFixed(2)} / ${budget.limit_cny.toFixed(2)} 元（不是实际扣费）。`));
@@ -1134,7 +1135,7 @@
       // 记录锁定本轮实际提交内容，不能在导出时从已编辑的控件反读条件。
       const packet={query,projectId:requestProject||'',projectLabel:document.querySelector('#search-project')?.selectedOptions?.[0]?.textContent||requestProject||'',
         scope:sourceSelect.value||'__all__',scopeLabel:sourceSelect.selectedOptions?.[0]?.textContent||sourceSelect.value||'全部已准备正文',
-        summary:state.textContent,modeLabel:notice?.textContent||'本地整理 · 出处待核验',
+        summary:state.textContent,modeLabel:notice?.textContent||'按出处整理 · 对照原页',
         conditions:fields.flatMap(field=>typeof submitted?.conditions?.[field.key]==='string'?[field.label.textContent+'：'+submitted.conditions[field.key]]:[]),
         provenance:(Array.isArray(body.condition_provenance)?body.condition_provenance:[]).filter(row=>projectConditionReady(row,requestProject)).map(row=>row.label+'：'+row.value+'（'+row.source_name+'）'),
         questions:visibleQuestions.map(row=>row.label+(row.reason?'；'+row.reason:'')),
@@ -1255,7 +1256,7 @@
           if(currentTask) {needsTaskRefresh=true;showTask();}}
         else if(response.status >= 400 && response.status < 500) pendingOperation=null;
         if([403,404].includes(response.status)) {revoked=true;own=++generation;dropTask();clearProjectChoices();}
-        throw Error(typeof body.detail === 'string' ? brief(body.detail, 240) : '出处整理暂时不可用，请重试。');
+        throw Error(typeof body.detail === 'string' ? brief(body.detail, 240) : typeof body.detail?.message === 'string' ? brief(body.detail.message,240) : '出处整理暂时不可用，请重试。');
       }
       const task = operation ? taskReady(body.qa_task, {id:operation.taskId,project:requestProject,mode,
         revision:operation.revision,operation:operation.id}) : null;
@@ -1334,6 +1335,16 @@
     finally{if(current())projectPreview.disabled=false;}
   }
   if(projectPreview){projectPreview.hidden=!projectId;projectPreview.addEventListener('click',previewProjectConditions);}
+  // 主搜索只交接同一条问答流程；未配置时说明步骤并允许先读本地原文。
+  globalThis.ArchSpecOfficialQA={searchDefault:async()=>{
+    if(modelOption?.checked!==true)return false;
+    if(modelOption.dataset?.configured==='false'){
+      panel.hidden=false;start.setAttribute('aria-expanded','true');
+      state.textContent='请按 README 填写 data/local-access/personal-model.private.env 中的 DeepSeek Key，保存后重启工作台。当前可先查阅本地原文。';
+      return false;
+    }
+    await requestAnswer();return true;
+  }};
   start.addEventListener('click', requestAnswer);
   form.addEventListener('submit', event => {event.preventDefault(); return requestAnswer();});
   document.querySelector('#official-qa-close')?.addEventListener('click', () => {
@@ -1341,10 +1352,11 @@
     if(needsTaskRefresh){panel.hidden=true;start.setAttribute('aria-expanded','false');}
     else invalidate();start.focus();
   });
-  queryInput.addEventListener('input', () => invalidate());
+  queryInput.addEventListener('input', () => {invalidate();if(modelOption)modelOption.checked=preferredModelMode;});
   sourceSelect.addEventListener('change', () => invalidate());
   modelOption?.addEventListener('change', () => {
     if(needsTaskRefresh||taskGetOwner!==null){modelOption.checked=false;panel.hidden=false;showTask();state.textContent='请先核回原任务状态，再确认本轮模型发送；未调用模型。';return;}
+    preferredModelMode=modelOption.checked===true;
     // 刷新后为原MODEL题重新勾选同意，不把原任务改成本地模式；其它模式变更开始新题。
     const confirming = recoveredModel && currentTask?.mode === 'MODEL' && modelOption.checked === true;
     invalidate({hide:!confirming,resetConditions:false,resetTask:!confirming});if(confirming) showTask();

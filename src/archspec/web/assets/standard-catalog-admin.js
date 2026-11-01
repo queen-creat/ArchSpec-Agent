@@ -86,7 +86,7 @@ const officialStatus = document.querySelector("#official-status");
 const officialPreview = document.querySelector("#official-preview");
 
 function renderOfficial(result) {
-  officialStatus.textContent = `${result.cache_hit ? "复用已有处理结果" : "已保存处理结果"}：${result.page_count} 页，${result.ocr_page_count} 页使用图片文字识别，${result.chunks.length} 个片段。待核验，尚未进入正式证据库。最后获取：${formatDate(result.last_fetched_at)}`;
+  officialStatus.textContent = `${result.cache_hit ? "复用已有处理结果" : "已保存处理结果"}：${result.page_count} 页，${result.ocr_page_count} 页使用图片文字识别，${result.chunks.length} 个片段。可打开原页查阅。最后获取：${formatDate(result.last_fetched_at)}`;
   officialPreview.replaceChildren();
   const link = document.createElement("a");
   link.href = result.page_url;

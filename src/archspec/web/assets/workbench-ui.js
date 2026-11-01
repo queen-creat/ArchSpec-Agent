@@ -155,7 +155,7 @@
   paintStatus();paintEmpty();
   if(model&&typeof fetch==='function')fetch('/api/official-qa/model-status')
    .then(response=>{if(!response.ok)throw Error('status');return response.json();})
-   .then(data=>{configured=typeof data.configured==='boolean'?data.configured:undefined;model.textContent=configured===true?'模型已配置 · 勾选后使用':configured===false?'模型未配置 · 可本地查阅':'模型配置状态暂未取得';paintStatus();})
+   .then(data=>{configured=typeof data.configured==='boolean'?data.configured:undefined;if(modelEnabled?.dataset)modelEnabled.dataset.configured=String(configured);model.textContent=configured===true?'DeepSeek 已配置 · 默认用于问题理解':configured===false?'DeepSeek 未配置 · 请按 README 填写自己的 Key':'DeepSeek 配置状态暂未取得';paintStatus();})
    .catch(()=>{configured=undefined;model.textContent='模型配置状态暂未取得';paintStatus();});
  }
  return {createRecentQueries,statusSummary,bind};

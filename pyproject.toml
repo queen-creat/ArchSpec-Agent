@@ -1,6 +1,6 @@
 [project]
 name = "archspec-agent"
-version = "0.1.0"
+version = "1.0.0"
 description = "面向建筑设计人员的规范检索与设计合规辅助平台"
 readme = "README.md"
 requires-python = ">=3.12"

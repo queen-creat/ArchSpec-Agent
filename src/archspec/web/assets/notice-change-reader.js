@@ -40,7 +40,7 @@
      const identity=doc.createElement('p');identity.className='reader-section-note';identity.textContent='归档公告指纹：'+row.notice_sha256+'；对应来源档案：'+row.notice_metadata_id;entry.append(identity);list.append(entry);
     }
     status.textContent=(body.items.length?'找到 '+body.items.length+' 条已保存调整线索，请核公告范围与后续版本。':'本次已保存档案中没有匹配线索；不代表当前规范没有调整。')
-     +(body.limited||body.skipped?' 资料扫描有上限或部分档案不可用，结果不完整。':'')+' 当前版本与工程适用性仍待核验。';
+     +(body.limited||body.skipped?' 资料扫描有上限或部分档案不可用，结果不完整。':'')+' 版本与适用范围见来源记录。';
    }catch(error){if(active())status.textContent=error.message||'公告线索暂不可读取。';}
   }
   panel.addEventListener('toggle',()=>{if(panel.open)void load();else epoch++;});panel.append(summary,note,status,list);return panel;

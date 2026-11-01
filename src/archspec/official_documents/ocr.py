@@ -213,6 +213,29 @@ def _has_text_ink(pixels, expected_height):
     return any(sum(abs(other - y) <= .35 * expected_height for other in ys) >= 4 for y in ys)
 
 
+def _paragraph_column(positioned, before, after, height, page_width):
+    """至少两条其他正文行的同栏坐标才能扩展裁剪，不从缺失文字推定栏宽。"""
+    left, right = min(before[0], after[0]), max(before[2], after[2])
+    groups = {}
+    step = max(1, 2 * height)
+    for row, bounds in positioned:
+        if (bounds == before or bounds == after or len(row["text"].strip()) < 8
+                or bounds[2] - bounds[0] < page_width * .3
+                or not .7 * height <= bounds[3] - bounds[1] <= 1.5 * height
+                or abs(bounds[0] - left) > 2 * height or bounds[2] < right - height):
+            continue
+        key = round(bounds[0] / step), round(bounds[2] / step)
+        values = groups.setdefault(key, [])
+        # 同一基线的重复框不能冒充两条独立正文行；输入已按纵坐标排列。
+        if not values or (bounds[1] + bounds[3] - values[-1][1] - values[-1][3]) / 2 > .7 * height:
+            values.append(bounds)
+    agreed = [values for values in groups.values() if len(values) >= 2]
+    if not agreed:
+        return None
+    column = max(agreed, key=lambda values: (len(values), max(b[2] for b in values)))
+    return min(left, *(b[0] for b in column)), max(right, *(b[2] for b in column))
+
+
 def _recover_text_gaps(page, rows, engine, scale, budget):
     """只补读相邻长正文框间有文字字迹的窄缝，与缺号补读共享两次上限。"""
     import pymupdf
@@ -237,11 +260,19 @@ def _recover_text_gaps(page, rows, engine, scale, budget):
                 or not body_tail(row, before) or not body_tail(next_row, after)):
             continue
         gap = after[1] - before[3]
-        if (not .65 * height <= gap <= 2.5 * height
-                or abs(before[0] - after[0]) > max(12, page.rect.width * .04)):
+        if not .65 * height <= gap <= 2.5 * height:
             continue
-        clip = pymupdf.Rect(max(page.rect.x0, min(before[0], after[0]) - 1), before[3] + .5,
-                            min(page.rect.x1, max(before[2], after[2]) + 1), after[1] - .5)
+        column = _paragraph_column(positioned, before, after, height, page.rect.width)
+        indent, old_limit = abs(before[0] - after[0]), max(12, page.rect.width * .04)
+        if indent > old_limit:
+            overlap = min(before[2], after[2]) - max(before[0], after[0])
+            # 只在已证实同栏且横向大部分重合时容许分项缩进，跨栏不拼接。
+            if (column is None or indent > max(old_limit, 2 * height)
+                    or overlap < .8 * min(before[2] - before[0], after[2] - after[0])):
+                continue
+        left, right = column or (min(before[0], after[0]), max(before[2], after[2]))
+        clip = pymupdf.Rect(max(page.rect.x0, left - 1), before[3] + .5,
+                            min(page.rect.x1, right + 1), after[1] - .5)
         if clip.is_empty or clip.get_area() * 9 > budget[1]:
             continue
         budget[1] -= int(clip.get_area() * 9)

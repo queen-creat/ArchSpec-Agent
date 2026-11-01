@@ -404,8 +404,8 @@
     rememberReadingPosition(item,{page:readingPage,view:readerMode,bookPage:!!bookRange});
     const generation = readerGeneration;
     const heading = document.createElement("div"); heading.className = "reader-heading";
-    // 核验状态只在阅读头提示一次；精简文案不会改变后台核验状态。
-    const label = document.createElement("small"); label.className = "reader-state"; label.textContent = "待核验";
+    // 阅读头只说明当前是原文查阅，出处与页码继续保留。
+    const label = document.createElement("small"); label.className = "reader-state"; label.textContent = "原文查阅";
     const title = document.createElement("h3"); title.textContent = `${item.title} · ${item.standard_code || "文号待核"}`;
     title.tabIndex = -1;
     // 只展示服务器从同一固定文档派生的分区，不凭条文措辞推断效力。
@@ -1398,7 +1398,7 @@
     summary.textContent = "检索范围与处理记录";
     const notice = document.createElement("p");
     notice.className = "source-warning";
-    notice.textContent = data.notice || "仅检索本机已准备正文，版本与适用范围仍待核验，不代表规范齐全。";
+    notice.textContent = data.notice || "仅检索本机已准备正文，可打开原页查阅完整内容。";
     const list = document.createElement("ul");
     const states = {EXCLUDED_METADATA:"不在本次筛选范围", METADATA_ERROR:"来源档案无法核对", SEARCHED: "已检索", NOT_ACQUIRED: "正文未准备", CACHE_ERROR: "缓存读取失败", EXCLUDED_ATTACHMENT: "不是完整正文", LIMIT_REACHED: "超过本次检索上限"};
     data.coverage.forEach(item => {
@@ -1917,6 +1917,9 @@
       // 先接通找整本书的原库存入口；带条号或普通问题仍沿原条文检索/联网合同。
       const opened=await globalThis.ArchSpecLibraryInventory?.openBookQuery(query,{isCurrent:current});
       if(opened||!current())return;
+      // 默认 AI 复用既有问答、取件和联网流程，不重复创建关键词请求。
+      const aiSearch=globalThis.ArchSpecOfficialQA?.searchDefault;
+      if(document.querySelector('#official-qa-model-enabled')?.checked===true && aiSearch && await aiSearch())return;
       await submitSearch();
     }finally{if(current())button.disabled=false;}
   });

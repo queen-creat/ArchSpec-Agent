@@ -103,7 +103,7 @@
     if(levelFilter)levelFilter.disabled=!metadataLoaded;if(regionFilter)regionFilter.disabled=!metadataLoaded;
     if(metadataLoad)metadataLoad.textContent=metadataLoaded?'重新核对地域与版本档案':'读取地域与版本档案';
     const prepared = sources.filter(canTrial).length;
-    summary.textContent = `共登记 ${sources.length} 份资料 · 已准备的完整正文 ${prepared} 份（试查受使用条件限制，仍待核验）`;
+    summary.textContent = `共登记 ${sources.length} 份资料 · 已准备的完整正文 ${prepared} 份`;
     if (!sources.length) {
       status.textContent = "尚未登记官方资料。这不代表没有相关规范要求，可在下方查找官方来源。";
       return;
@@ -125,8 +125,8 @@
       const state = source.cache_error
         ? `缓存读取失败：${source.cache_error}`
         : source.acquired === true
-          ? "已准备 · 待核验"
-          : "未取得正文 · 待核验（不代表没有规范要求）";
+          ? "正文已准备"
+          : "未取得正文";
       row.append(text("p", state, "library-inventory-state"));
       if(metadataLoaded){
         const region=profile?.fields.region.value;
