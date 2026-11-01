@@ -264,15 +264,24 @@
     if(visible())void load();
   });
   // 完整书名/编号直接查书目；只消费同一库存，不把书目匹配当正文证据。
-  globalThis.ArchSpecLibraryInventory={openBookQuery:async(query,{isCurrent}={})=>{
+  // 书名必须先与本站登记或公开目录精确匹配；宽泛“消防规范”仍交原问题流程。
+  let recognizedBook = null;
+  const isBookQuery = query => {
+    if (typeof query !== "string") return false;
+    const term=query.normalize("NFKC").trim().replace(/^《([^》]+)》$/, '$1');
+    return /^(?:GB|JGJ|CJJ)\s*(?:\/T)?\s*\d+(?:\.\d+)?(?:\s*[-—－]\s*\d{4})?$/i.test(term)
+      || Boolean(recognizedBook && recognizedBook === filterKey(term));
+  };
+  globalThis.ArchSpecLibraryInventory={isBookQuery,openBookQuery:async(query,{isCurrent,readyOnly=false,sourceId="__all__",bindings=null,refresh=false}={})=>{
     if(typeof query!=='string'||typeof isCurrent!=='function'||!isCurrent())return false;
+    if(sourceId !== '__all__') return false;
     const term=query.normalize('NFKC').trim().replace(/^《([^》]+)》$/,'$1');
     const code=value=>String(value||'').normalize('NFKC').toUpperCase().replace(/\s+/g,'').replace(/[—－]/g,'-');
     const wanted=code(term),isCode=/^(?:GB|JGJ|CJJ)(?:\/T)?\d+(?:\.\d+)?(?:-\d{4})?$/.test(wanted);
     let sources;
     try{
-      if(inventory)sources=await inventory.read();
-      else if(loaded)sources=filterRows.map(row=>row.source);
+      if(inventory)sources=await inventory.read({refresh});
+      else if(loaded && !refresh)sources=filterRows.map(row=>row.source);
       else{const response=await fetch('/api/official-documents');sources=await globalThis.ArchSpecHTTP.json(response,'规范清单暂不可读取','array');if(!response.ok)return false;}
     }catch{return false;}
     if(!isCurrent()||!Array.isArray(sources))return false;
@@ -296,10 +305,16 @@
       if (!clues.length) return false;
     }
     if (!isCurrent()) return false;
+    recognizedBook = filterKey(term);
+    if (readyOnly && !matched.some(source => canTrial(source) && /^[a-f0-9]{64}$/.test(source.snapshot_id || "") && (!bindings || bindings.some(binding =>
+      binding.source_id === source.source_id && binding.snapshot_id === source.snapshot_id)))) return false;
     // 这是用户明确找书的独立展示动作，不更改原项目、问题或条文检索范围。
     generation++;loading=false;refresh.disabled=false;
     if(filter)filter.value=term;if(levelFilter)levelFilter.value='';if(regionFilter)regionFilter.value='';
-    render(sources);loaded=true;
+    // 自动接续只展示同一已核批次的固定来源，不能将其他同名资料混入。
+    const displayed = bindings ? sources.filter(source => bindings.some(binding =>
+      binding.source_id === source.source_id && binding.snapshot_id === source.snapshot_id)) : sources;
+    render(displayed);loaded=true;
     if (clues.length) {
       const group = document.createElement('section'); group.className = 'library-catalog-clues';
       for (const entry of clues) {

@@ -1915,11 +1915,13 @@
     button.disabled=true;
     try{
       // 先接通找整本书的原库存入口；带条号或普通问题仍沿原条文检索/联网合同。
-      const opened=await globalThis.ArchSpecLibraryInventory?.openBookQuery(query,{isCurrent:current});
+      const opened=await globalThis.ArchSpecLibraryInventory?.openBookQuery(query,{isCurrent:current,sourceId:scope,
+        readyOnly:document.querySelector('#pending-online-enabled')?.checked===true});
       if(opened||!current())return;
       // 默认 AI 复用既有问答、取件和联网流程，不重复创建关键词请求。
       const aiSearch=globalThis.ArchSpecOfficialQA?.searchDefault;
-      if(document.querySelector('#official-qa-model-enabled')?.checked===true && aiSearch && await aiSearch())return;
+      const bookQuery=globalThis.ArchSpecLibraryInventory?.isBookQuery?.(query)===true;
+      if(!bookQuery && document.querySelector('#official-qa-model-enabled')?.checked===true && aiSearch && await aiSearch())return;
       await submitSearch();
     }finally{if(current())button.disabled=false;}
   });

@@ -261,6 +261,21 @@
           // 部分批次只更新阅读列表，不调用onPrepared或触发问答/模型，也不提前结束流程。
         }
       }
+      // 本轮整本书已取到并重核权限时，直接展开同快照书目；不重发查找或模型。
+      const bookBindings = flow.state==='NO_EVIDENCE' && flow.prepared_body_readback?.state==='READABLE'
+        ? flow.prepared_body_readback.bindings
+        : flow.state==='READY' && flow.current_observation_state==='READABLE'
+          ? (observed(flow)?.source?.bindings || []).filter(binding => data.acquisition?.items?.some(item =>
+              item.state==='READY' && item.kind==='FULL_TEXT' && item.source_id===binding.source_id
+              && item.snapshot_id===binding.snapshot_id)) : [];
+      if (!manual && !retryAttempt && !historical && !context?.restored && !completed && sourceId==='__all__'
+          && bookBindings.length && globalThis.ArchSpecLibraryInventory?.isBookQuery?.(query)===true) {
+        await context?.localFinished;
+        const opened=current() && await globalThis.ArchSpecLibraryInventory.openBookQuery(query, {
+          isCurrent:current, readyOnly:true, sourceId, bindings:bookBindings, refresh:true,
+        });
+        if (opened) { completed=true; return; }
+      }
       // 新正文可读但字面理解尚未匹配时，只续本轮已有的等待来源闭包。
       // 历史恢复没有该闭包，不能借READY任务或GET获得新的模型授权。
       const preparedUnmatched=flow.state==="NO_EVIDENCE" && flow.prepared_body_readback?.state==="READABLE"
