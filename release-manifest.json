@@ -81,7 +81,7 @@
     "src/archspec/official_discovery/public_regions.py": "9c209861376505e8def3c5c3ef08ee98d9c26fff48cadd3be868be5a5333384c",
     "src/archspec/official_discovery/public_scope_catalog.py": "7c99f1262f8cbba081dcddcbd75819dc236c071eb54ecfc0d08040ad033a435b",
     "src/archspec/official_discovery/public_title_catalog.py": "6ac9b87064303fe3d85a16f599926bd5955813f3f72d6c83da3e4b203b9ae4fc",
-    "src/archspec/official_discovery/query_flow.py": "d5e337e81428fac3a629c6926dd1a16558ca8c08ece3f332fcd8e8e14b3b6f18",
+    "src/archspec/official_discovery/query_flow.py": "e2753659cee55bc9dc65e1b535c84ca1a67bffeb55856a21b5849d685c166618",
     "src/archspec/official_discovery/registered_publications.py": "12da203d393fbed9d78bbe21e516ccd5c58e5216ee3dad7f98a576525e55aa01",
     "src/archspec/official_discovery/router.py": "326d67bd1b4cb96ff9db48069d668fa841c97e8924b6734f6101e5737cdf13f0",
     "src/archspec/official_discovery/service.py": "51b76993f443cd5337903b2e8c6b31adec7aa2d990fb10335f1811068bc0b716",

@@ -397,10 +397,15 @@ class OfficialQueryFlow:
             # 每次完成都读取固定快照并重核当前搜索/摘录权限，不信旧候选或搜索摘要。
             self.documents.source_metadata(item["source_id"], item["snapshot_id"], item.get("metadata_id"))
             references.append({key: item[key] for key in ("source_id", "snapshot_id", "chunk_id", "metadata_id") if key in item})
+        # 单地域合同尚无逐范围覆盖时，双范围问题即使读到一侧也不能签收全部完成。
+        # 已找到的正文仍由原本地查阅入口展示，不借候选数量猜国家/地方均已覆盖。
+        public_plan = found.get("lookup", {}).get("public_plan", {})
+        split_scope = isinstance(public_plan, dict) and public_plan.get("route") == "SPLIT_SCOPE_REQUIRED"
+        complete = bool(references) and not split_scope
         self._change(flow_id, step="REFERENCE_CHECK", step_state="DONE", references=references,
                      lookup_observations=found.get("lookup", {}).get("observations"),
-                     state="READY" if references else "NO_EVIDENCE",
-                     error_code=None if references else "NO_MATCHING_CLAUSE")
+                     state="READY" if complete else "NO_EVIDENCE",
+                     error_code=None if complete else "SCOPE_REVIEW_REQUIRED" if split_scope else "NO_MATCHING_CLAUSE")
 
     def _completion_step(self, row, step, state):
         # 同一免费核验重试仍读当前事实；已签收的阶段事实无需再次追加事件或倒退phase。
