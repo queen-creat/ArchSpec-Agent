@@ -41,8 +41,8 @@ def scoped_object_match(value, text):
 def focus_prefix_context(query, subjects, *, background_use=None, clause=False):
     """保留对象前及多个对象之间未覆盖的原字，不推断用途、等级或工程事实。
 
-    明确书名/编号仍由来源范围核对；提问语气沿用现有词表。条文模式只去开头
-    的数字条号，不能把条号误当范围。没有此结构时返回空，不猜后置修饰关系。
+    明确书名/编号仍由来源范围核对；提问语气沿用现有词表。条文模式去开头
+    的中文和数字正文条号，保留条号引用，不能把条号误当范围。不猜后置修饰关系。
     """
     from archspec.official_discovery.public_queries import PUBLIC_CODE, extract_public_titles
     from archspec.official_documents.reference_relevance import (
@@ -52,7 +52,17 @@ def focus_prefix_context(query, subjects, *, background_use=None, clause=False):
     )
     from archspec.query_scope import requested_content
 
-    content = re.sub(r"\s+", "", requested_content(query))
+    content = requested_content(query)
+    if clause:
+        from archspec.documents.chunker import clause_start
+
+        # 复用正文切块的条号识别；引用“第×条规定”等不是正文标题。
+        # 只改变角色核对视图，原文、位置和引用保持不变。
+        lines = content.splitlines()
+        if lines and (anchor := clause_start(lines[0].strip())):
+            lines[0] = anchor["body"]
+            content = "\n".join(lines)
+    content = re.sub(r"\s+", "", content)
     if clause:
         content = re.sub(r"^\d+(?:\.\d+){1,3}", "", content)
     spans = []

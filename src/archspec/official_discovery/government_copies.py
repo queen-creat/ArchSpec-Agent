@@ -122,6 +122,11 @@ def candidate_priority(clue, plan):
     # 正文身份核验会排除解读页；读取排序须另看其明确引用的书名，才能先找到原文入口。
     # 这里仅调整共享五页额度的读取顺序，不把书名引用或搜索摘要升级为正文证据。
     subjects = (title, *re.findall(r"《([^》]+)》", title))
+    # 有些政府通知不加书名号；只提取完整印发标题里的主文件名，
+    # 后续仍须读取公告并核验原件，废止和修订等通知不能借此冒充主文件。
+    issued = re.fullmatch(r"[^，,；;。！？?!《》]{0,60}关于印发([^，,；;。！？?!《》]{2,100})的通知", title.strip())
+    if issued and not re.search(r"废止|废除|修订|修改|修正|解读|征求意见|草案", title):
+        subjects += (issued.group(1),)
     target = any(plan.match_source(code, subject) == "TARGET"
                  for subject in subjects for code in (extract_public_codes(subject) or ("",)))
     commentary = bool(re.search(r"解读|图解|问答|答疑", title))
