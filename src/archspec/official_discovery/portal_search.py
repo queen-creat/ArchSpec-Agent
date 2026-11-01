@@ -20,7 +20,7 @@ from archspec.official_http import official_http_client
 # 保留原模块的公开目录入口，外部消费同一不可变来源，不另维护副本。
 __all__ = ["DIRECTORY_SHA256", "DIRECTORY_SOURCE", "PORTAL_ROOTS", "VERIFIED_SEARCH_CONTRACTS", "VERSION", "discover_portal"]
 
-VERSION = "OFFICIAL_PORTAL_DISCOVERY_V4"
+VERSION = "OFFICIAL_PORTAL_DISCOVERY_V5"
 _API = "https://api.so-gov.cn/"
 # 已核的公开工具合同，记录官方页面指纹；不含规范地址、正文或答案。
 # 在线query/site仍逐次核对站点身份及全域栏目，避免每题重复依赖门户首页。
@@ -41,6 +41,96 @@ VERIFIED_IGS_CONTRACTS = {
         "sha256": "e93e213438dd2b575fcc0a429e61fd6752c3b8d7ed05e49e458c03192008efbc",
     },
 }
+
+
+# 广东省政府主页表单绑定的公开索引；这是省级跨城搜索，不代表城市官网。
+_GD_INDEX_ENTRY = 'https://search.gd.gov.cn/search/all/2'
+_GD_INDEX_ENDPOINT = 'https://search.gd.gov.cn/api/search/all'
+_GD_INDEX_HOME = 'https://www.gd.gov.cn/'
+_GD_INDEX_HOME_SHA = '575041cbd24df850b9d046469b0ecb4c43fa7bb5900e929c266ab7e866cb1c4d'
+_GD_INDEX_SCRIPT = 'https://search.gd.gov.cn/static/pc/dist/app-5e6dbe7c.js'
+_GD_INDEX_SCRIPT_SHA = 'a80c979d05d76f8ea72892abef7a20382b79ac798afe92d8a7cf3e20619475fa'
+
+
+def _guangdong_index_region(region):
+    from archspec.official_discovery.public_regions import REGION_PARENTS
+
+    return region == '广东' or REGION_PARENTS.get(region) == '广东'
+
+
+def supports_portal(region, roots):
+    """只声明有已登记官网或已审阅的省级跨城搜索，不伪称某市官网。"""
+    return bool(region and (region in roots or _guangdong_index_region(region)))
+
+
+def _discover_guangdong_index(plan, client, result):
+    """政府索引线索须先核目标地域及文件名，再由下游独立取公告和正文。"""
+    import json
+
+    from archspec.official_discovery.public_queries import extract_public_codes
+
+    validate_government_url(_GD_INDEX_HOME)
+    validate_government_url(_GD_INDEX_ENTRY)
+    validate_government_url(_GD_INDEX_ENDPOINT)
+    result['search_contract'] = {'source_url': _GD_INDEX_SCRIPT, 'sha256': _GD_INDEX_SCRIPT_SHA,
+                                 'owner_url': _GD_INDEX_HOME, 'owner_sha256': _GD_INDEX_HOME_SHA}
+    for term, _reason in plan.queries[:3]:
+        public = term if plan.region in term else f'{plan.region} {term}'
+        try:
+            # 搜索内容仅含登记地区和固定公共词；不读取浏览器凭据或项目原问。
+            # HTTP 客户端可能在本轮保留官网设置的临时 cookie，不持久化为用户配置。
+            validate_public_term(public)
+            payload = json.loads(_read(client, 'POST', _GD_INDEX_ENDPOINT,
+                headers={'Origin': 'https://search.gd.gov.cn', 'Referer': _GD_INDEX_ENTRY},
+                json={'keywords': public, 'sort': 'smart', 'site_id': '2', 'range': 'province',
+                      'position': 'title', 'page': 1, 'recommand': 1}))
+            news = payload.get('data', {}).get('news')
+            if payload.get('errcode') != 0 or not isinstance(news, dict) or not isinstance(news.get('list'), list):
+                raise ValueError('广东官网搜索响应结构无法核对')
+            items, seen = [], set()
+            for row in news['list'][:20]:
+                if not isinstance(row, dict):
+                    continue
+                title = _igs_plain_text(row.get('title'), 500)
+                observed = row.get('url')
+                if not title or not isinstance(observed, str):
+                    continue
+                # 只保留被当前问题的地域及主文件合同接受的线索；标题本身仍非正文。
+                # 只有明确印发/发布的公告标题可把书名作为候选；废止/修改壳不能据此取件。
+                publication = re.match(r'^(?:[\u4e00-\u9fff]{0,32}关于|关于)?(?:印发|发布|公布|颁布)', title)
+                names = (title, *re.findall(r'《([^》]+)》', title)) if publication else (title,)
+                if not any(plan.match_source(code, name) == 'TARGET'
+                           for name in names for code in (extract_public_codes(name) or ('',))):
+                    continue
+                try:
+                    parts = urlsplit(observed)
+                    candidate = (urlunsplit(('https', parts.netloc, parts.path, parts.query, parts.fragment))
+                                 if parts.scheme == 'http' else observed)
+                    url = validate_government_url(candidate)
+                except ValueError:
+                    continue
+                if url in seen:
+                    continue
+                seen.add(url)
+                items.append({'title': title, 'url': url, 'excerpt': _igs_plain_text(row.get('content'), 4000),
+                              'score': 0.0, 'score_kind': 'NOT_CALIBRATED', 'kind': 'SEARCH_SNIPPET',
+                              'body_status': 'NOT_ACQUIRED', 'lifecycle_status': 'UNKNOWN',
+                              'provider': 'NATIVE_PORTAL', 'matched_queries': [public],
+                              'requested_region': plan.region, 'observed_url': observed})
+            from archspec.official_discovery.government_copies import candidate_priority
+            items = sorted(items, key=lambda item: candidate_priority(item, plan))[:5]
+            result['items'].extend(items)
+            result['queues'].append([item['url'] for item in items])
+            result['searches'].append({'term': public, 'provider': 'NATIVE_PORTAL', 'status': 'COMPLETE',
+                'result_count': len(items), 'search_query': public, 'site_code': '2',
+                'source_url': _GD_INDEX_ENTRY, 'scope_label': '广东省政府全省索引',
+                'search_url': _GD_INDEX_ENTRY + '?' + urlencode({'keywords': public})})
+        except Exception:  # noqa: BLE001 -- 合同或服务失败即停止本批，不重试或扩大查询。
+            result['searches'].append({'term': public, 'provider': 'NATIVE_PORTAL', 'status': 'FAILED',
+                                      'result_count': 0, 'message': '广东政府索引暂不可用'})
+            result['errors'].append({'term': public, 'message': '广东政府索引暂不可用，本批已停止'})
+            break
+    return result
 
 
 def _read(client, method, url, *, headers=None, **options):
@@ -147,11 +237,14 @@ def discover_portal(plan, roots, *, client=None):
     import json
     result = {"searches": [], "items": [], "queues": [], "errors": [], "metadata_read_count": 0}
     root = roots.get(plan.region)
-    if root is None:
+    guangdong = root is None and _guangdong_index_region(plan.region)
+    if root is None and not guangdong:
         return result
     owned = client is None
     client = client or official_http_client()
     try:
+        if guangdong:
+            return _discover_guangdong_index(plan, client, result)
         validate_government_url(root)
         igs = VERIFIED_IGS_CONTRACTS.get(root)
         if igs:

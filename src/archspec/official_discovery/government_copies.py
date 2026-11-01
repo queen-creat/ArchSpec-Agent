@@ -199,8 +199,28 @@ def _separate_national_declaration(raw, headings):
     return code, title, match[0].strip()
 
 
+def _is_local_amendment_notice(heading):
+    """引用主书名的修正/废止文书不是整本主文件，保留原官网线索。"""
+    if not isinstance(heading, str) or not heading.strip():
+        return False
+    # 年版或书名内部的“修订”不代表发布外壳在修改；只核书名号之外的动作。
+    titles = re.findall(r"《[^》]+》", heading)
+    if titles:
+        outer = re.sub(r"《[^》]+》", "", heading)
+        return bool(re.search(r"废止|废除|作废|撤销|停止执行|修改|修订|修正|调整|变更|更正|补充|解释|说明|释义|指南|指引", outer))
+    # 未用书名号时只识别明确的通知或决定句式，不把独立正文里的普通修订字样当附件。
+    return bool(re.search(
+        r"^(?:关于)?(?:废止|废除|作废|撤销|停止执行|修改|修订|修正|调整|变更|更正|补充).{1,120}"
+        r"(?:通知|决定|公告|修正案|修改单)$"
+        r"|(?:废止|废除|作废|撤销|停止执行|修改|修订|修正|调整|变更|更正)"
+        r".{0,12}(?:通知|决定|公告|修正案|修改单)$", heading.strip()))
+
+
 def _local_identity(page, headings, plan):
     """只核实际主标题和其文号字段，不用正文引用清单或第三方摘要确定主文件。"""
+    # 网页与PDF封面共用这道门，不能从修订/废止标题中的书名借成主文件。
+    if any(_is_local_amendment_notice(heading) for heading in headings):
+        raise ValueError("地方修订或废止文书仅保留线索，未登记为完整主文件")
     for heading in headings:
         if non_rule_notice_title(heading) or re.search(
                 r"解读|图解|问答|答疑|征求意见|草案|公示|局部修订|部分条文|修改单", heading):
@@ -282,6 +302,9 @@ def inspect_government_copy(clue, plan, *, client=None, capture_original=None, c
         page.links.extend(_embedded_attachment_links(html))
         headings = [page.meta.get("articletitle", ""), *page.subject_titles,
                     re.split(r"[-_|]政务公开", page.document_title)[0].strip()]
+        # 修订/废止文书不能通过书名号和同名附件冒充完整主文件；原搜索线索仍可访问。
+        if plan.region is not None and any(_is_local_amendment_notice(heading) for heading in headings):
+            raise ValueError("地方修订或废止文书仅保留线索，未登记为完整主文件")
         # 非正式/解读页仅能沿明确正式原文链接继续，不能直接登记其附件或正文。
         if any(non_rule_notice_title(heading) or procedural_notice_title(heading) or re.search(
                 r"征求意见|草案|送审稿|报批稿|局部修订|部分条文|修改单|补充(?:规定|细则|通知|说明)|解读|图解|问答|答疑", heading)

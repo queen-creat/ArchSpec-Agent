@@ -21,7 +21,11 @@ from archspec.official_discovery.public_queries import (
     plan_queries,
     validated_public_titles,
 )
-from archspec.official_discovery.public_regions import REGION_NAMES, REGION_PARENTS
+from archspec.official_discovery.public_regions import (
+    GUANGDONG_EXPLICIT_CITY_NAMES,
+    REGION_NAMES,
+    REGION_PARENTS,
+)
 from archspec.official_documents.local_policy import (
     REVIEWED_PUBLICATIONS,
     local_query_entries,
@@ -43,6 +47,63 @@ MATCH_MESSAGES = {
 
 def _compact(value):
     return re.sub(r"[\s《》〈〉（）()]+", "", unicodedata.normalize("NFKC", value))
+
+
+# 标题中在目标地域之后仍出现显式下级行政名称时，不能以包含上级名称当作同一地域。
+# 后接技术文书主题用于约束名称边界，不从名称推断省市隶属或法规适用性。
+_ADMIN_SUFFIX = re.compile(r"^(?:特别行政区|(?:壮族|回族|维吾尔)?自治区|自治州|省|市|县|区|旗)")
+_NESTED_ADMIN = re.compile(
+    r"^(?:[\u4e00-\u9fff]{2,12}?(?:自治州|自治县|市)|[\u4e00-\u9fff]{1,12}?县)"
+    r"(?=城乡|城市|城镇|建设|建筑|规划|国土|土地|住宅|日照|间距|绿色|工程|管理|技术)")
+
+
+def _ambiguous_local_jurisdiction(subject, region):
+    """仅按标题可见行政后缀排除下级/异地；无法确认时仍保留线索。"""
+    position = subject.find(region)
+    if position < 0:
+        return False
+    before = subject[:position]
+    # 省名前缀与市名同时出现时，只接受现有目录或已审阅文件确认的组合。
+    # 不推断未知省市隶属，也不因后续出现目标名覆盖前面的其他市县。
+    names = "|".join(re.escape(name) for name in sorted(REGION_NAMES, key=len, reverse=True))
+    province = re.fullmatch(rf"({names})(?:省|(?:壮族|回族|维吾尔)?自治区)", before)
+    if province:
+        pairs = {(entry.province, entry.city) for entry in REVIEWED_PUBLICATIONS.values() if entry.city}
+        pairs.update((parent, city) for city, parent in REGION_PARENTS.items())
+        if (province.group(1), region) not in pairs:
+            return True
+    elif before:
+        # 标题还带“关于落实”等外层词时不是独立主文件；公告解析器会单独提取书名。
+        return True
+    tail = subject[position + len(region):]
+    suffix = _ADMIN_SUFFIX.match(tail)
+    if suffix:
+        tail = tail[suffix.end():]
+    # 兼容“某市某区”和“某地高新区”，也不把明确下级登记成整个上级。
+    return bool(_NESTED_ADMIN.match(tail))
+
+
+def _local_title_identity(title):
+    """书名身份比较可去尾部括号年份；该年份不代表已核年版或现行性。"""
+    identity = without_editions(title)
+    return re.sub(r"[（(]\s*(?:19|20)\d{2}\s*年\s*[）)]\s*$", "", identity).strip()
+
+
+def _local_primary_name_matches(title, region, names):
+    """只比较已核本地前缀和完整主书名，不借尾部说明或下级名称。"""
+    primary = _compact(_local_title_identity(title))
+    for value in names:
+        name = _compact(value)
+        if not name or not primary.endswith(name):
+            continue
+        prefix = primary[:-len(name)]
+        location = prefix.find(region)
+        if location < 0:
+            continue
+        suffix = prefix[location + len(region):]
+        if not suffix or _ADMIN_SUFFIX.fullmatch(suffix):
+            return True
+    return False
 
 
 def non_rule_notice_title(title):
@@ -171,6 +232,10 @@ class DiscoveryPlan:
         if not isinstance(title, str) or not title.strip() or not isinstance(standard_code, str):
             return "UNKNOWN"
         subject = _compact(title)
+        if (self.route in {"UNSUPPORTED_LOCAL", "YICHANG", "REGISTERED_LOCAL"}
+                and self.region not in {None, "地域待补充"}
+                and _ambiguous_local_jurisdiction(subject, self.region)):
+            return "ASSOCIATED"
         if self.route == "UNSUPPORTED_LOCAL":
             # 旧路线名仅表示没有城市专用提供方；实际主文件可由政府搜索取得。
             # 地域必须出现在主文件题名；国家/行业编号不能因此变成地方规定。
@@ -185,22 +250,29 @@ class DiscoveryPlan:
             # 这是获取候选原件的身份判定，不证明该文件能回答原问题或适用于项目。
             fallback_titles = tuple(value for kind, value in self.targets if kind == "LOCAL_FALLBACK")
             if fallback_titles:
-                base = _compact(without_editions(title))
-                tail = base[len(self.region):] if base.startswith(self.region) else ""
-                for suffix in ("自治区", "省", "市"):
-                    if tail.startswith(suffix):
-                        tail = tail[len(suffix):]
-                        break
-                return "TARGET" if tail in {_compact(value) for value in fallback_titles} else "ASSOCIATED"
-            known = any(_compact(value) in subject for kind, value in self.targets if kind == "LOCAL_TOPIC")
+                return ("TARGET" if _local_primary_name_matches(title, self.region, fallback_titles)
+                        else "ASSOCIATED")
+            # 已登记的目标题名必须为主标题结尾；含题名的修正、附件或说明
+            # 仍可关联查阅，不能靠子串成为同一本完整主文件。
+            named = tuple(_compact(value) for kind, value in self.targets
+                          if kind == "LOCAL_TOPIC" and _compact(value) in subject)
+            if named:
+                return "TARGET" if _local_primary_name_matches(title, self.region, named) else "ASSOCIATED"
             # 地方正式文件名称各异；共用文书类别，不逐城市添加题名特例。
             planning = any(value in LOCAL_PLANNING_TITLES for kind, value in self.targets)
-            normative = bool(re.search(
-                r"(?:规划|建筑|建设工程).*?(?:规定|办法|细则|规则|条例)$"
-                r"|(?:日照|间距).*(?:管理|计算|控制|技术要求|技术规定|标准|执行).*通知$", subject))
-            return "TARGET" if known or planning and normative else "ASSOCIATED"
+            # 未登记的独立规范不再只凭文末有“办法/规定”或全文含“规划”判断；
+            # 已核地域名称后的主标题必须直接以专业对象开头，不能跳过未知下级名称。
+            local_title = subject[subject.find(self.region) + len(self.region):]
+            marker = _ADMIN_SUFFIX.match(local_title)
+            if marker:
+                local_title = local_title[marker.end():]
+            normative = bool(re.match(
+                r"(?:城乡规划|城市规划|国土空间规划|规划|建筑|建设工程|日照|间距|国土|土地)"
+                r".*?(?:规定|办法|细则|规则|条例)$"
+                r"|(?:日照|间距).*(?:管理|计算|控制|技术要求|技术规定|标准|执行).*通知$", local_title))
+            return "TARGET" if planning and normative else "ASSOCIATED"
         if self.route == "YICHANG":
-            return "TARGET" if _compact(TARGET) in subject else "ASSOCIATED"
+            return "TARGET" if _compact(without_editions(title)).endswith(_compact(TARGET)) else "ASSOCIATED"
         if self.route == "REGISTERED_LOCAL":
             return "TARGET" if any(
                 entry.code == standard_code and _compact(entry.title) == subject
@@ -231,7 +303,16 @@ class DiscoveryPlan:
 
 def _target_region(query):
     """先识别项目目标，再处理多地歧义；引用文件地名不按词表顺序抢占。"""
-    pattern = "|".join(re.escape(name) for name in sorted(REGION_NAMES, key=len, reverse=True))
+    # 新地名只接受显式“市”，或广东省级上下文后的项目/地点边界；
+    # 不能把“中山大学/医院”中的机构名当作项目所在地。
+    def region_pattern(name):
+        escaped = re.escape(name)
+        if name not in GUANGDONG_EXPLICIT_CITY_NAMES:
+            return escaped
+        end = r"(?=市|项目|地区|地点|所在地|[，,；;。！？?!\s]|$)"
+        return rf"(?:{escaped}(?=市)|(?<=广东省){escaped}{end}|(?<=广东){escaped}{end})"
+
+    pattern = "|".join(region_pattern(name) for name in sorted(REGION_NAMES, key=len, reverse=True))
 
     region_pairs = {(entry.province, entry.city) for entry in REVIEWED_PUBLICATIONS.values() if entry.city}
     region_pairs.update((province, city) for city, province in REGION_PARENTS.items())
@@ -254,8 +335,10 @@ def _target_region(query):
     # 角色绑定的是同一地域短语；省市连写不能截成省级目标。
     chains = []
     for province, city in region_pairs:
-        chain_pattern = (rf"{re.escape(province)}(?:省)?[\s·-]{{0,3}}{re.escape(city)}(?:市)?|"
-                         rf"{re.escape(city)}(?:市)?[\s·-]{{0,3}}{re.escape(province)}(?:省)?")
+        city_end = (r"(?=市|项目|地区|地点|所在地|[，,；;。！？?!\s]|$)"
+                    if city in GUANGDONG_EXPLICIT_CITY_NAMES else "")
+        chain_pattern = (rf"{re.escape(province)}(?:省)?[\s·-]{{0,3}}{re.escape(city)}{city_end}(?:市)?|"
+                         rf"{re.escape(city)}{city_end}(?:市)?[\s·-]{{0,3}}{re.escape(province)}(?:省)?")
         chains.extend((match.start(), match.end(), (province, city))
                       for match in re.finditer(chain_pattern, outside))
 

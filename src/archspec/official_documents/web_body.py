@@ -29,7 +29,7 @@ class _BodyParser(HTMLParser):
         values = dict(attrs)
         if tag in {"script", "style", "noscript"}:
             self.hidden += 1
-        if not self.depth and "html_content" in values.get("class", "").split():
+        if not self.depth and "html_content" in (values.get("class") or "").split():
             self.containers += 1
             self.depth = 1
         elif self.depth and tag not in {"br", "hr", "img", "input", "meta", "link"}:

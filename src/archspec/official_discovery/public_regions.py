@@ -43,8 +43,14 @@ _NATIONWIDE_HTTPS_PORTAL_ROOTS = MappingProxyType({
     '武汉': 'https://www.wuhan.gov.cn/',
 })
 PORTAL_ROOTS = MappingProxyType({**_NATIONWIDE_HTTPS_PORTAL_ROOTS, **_FUJIAN_PORTAL_ROOTS})
-# 只有原福建城市是福建的子级，省级入口和武汉不能继承福建身份。
+# 广东省政府公开搜索主页列出的全部21个地级市；仅绑定地区名称，不登记各市搜索入口。
+GUANGDONG_DIRECTORY_SOURCE = "https://search.gd.gov.cn/"
+GUANGDONG_DIRECTORY_SHA256 = "5046818701cde72f86c10b930aedc65c7173ada914054b3ab8542d1064f3ef80"
+_GUANGDONG_CITIES = ("广州", "深圳", "珠海", "汕头", "佛山", "韶关", "河源", "梅州", "惠州", "汕尾",
+                     "东莞", "中山", "江门", "阳江", "湛江", "茂名", "肇庆", "清远", "潮州", "揭阳", "云浮")
+# 新增短地名只按明确行政后缀或省级上下文使用，避免大学/医院名称冒充所在地。
+GUANGDONG_EXPLICIT_CITY_NAMES = frozenset(name for name in _GUANGDONG_CITIES if name not in _BASE_REGION_NAMES)
 REGION_PARENTS = MappingProxyType({**{city: "福建" for city in _FUJIAN_PORTAL_ROOTS if city != "福建"},
-                                  "武汉": "湖北"})
-# 同一目录供问题识别和门户发现消费，不能登记了搜索入口却丢掉原问地域。
-REGION_NAMES = tuple(dict.fromkeys((*_BASE_REGION_NAMES, *PORTAL_ROOTS)))
+                                  **{city: "广东" for city in _GUANGDONG_CITIES}, "武汉": "湖北"})
+# 地域名称与已审核的门户入口分开；目录地名不代表其官网搜索已支持。
+REGION_NAMES = tuple(dict.fromkeys((*_BASE_REGION_NAMES, *PORTAL_ROOTS, *_GUANGDONG_CITIES)))

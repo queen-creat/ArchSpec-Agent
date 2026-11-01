@@ -92,7 +92,8 @@ def configure_personal_mode(project_root):
     sys.addaudithook(protect_private_configuration)
     # 搜索配置独立于模型/登录凭据，只读这个固定非密钥文件，不读取旧env。
     search_path = root / "data/local-access/personal-search.local.json"
-    search = {"enabled": False}
+    # 全新个人安装默认补充免密公共搜索；已有显式配置仍保持用户选择。
+    search = {"enabled": True}
     if search_path.exists():
         if search_path.is_symlink() or search_path.stat().st_size > 4096:
             raise ValueError("个人搜索配置无法核对")

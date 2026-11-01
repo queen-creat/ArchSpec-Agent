@@ -18,7 +18,7 @@ from archspec.official_discovery.government_copies import (
 )
 from archspec.official_discovery.local_sources import YichangClueProvider
 from archspec.official_discovery.plan import MATCH_MESSAGES, build_discovery_plan
-from archspec.official_discovery.portal_search import PORTAL_ROOTS, discover_portal
+from archspec.official_discovery.portal_search import PORTAL_ROOTS, discover_portal, supports_portal
 from archspec.official_discovery.portal_search import VERSION as PORTAL_VERSION
 from archspec.official_discovery.provider import MohurdDiscoveryProvider
 from archspec.official_discovery.public_queries import (  # noqa: F401 -- 保留旧公共导入接口
@@ -147,15 +147,16 @@ class DiscoveryService:
         cache_identity = {"version": 8 if local else 23, "plan": public_plan}
         if _prepare_fallbacks:
             cache_identity["bounded_fallback"] = 1
-        if plan.route == "UNSUPPORTED_LOCAL":
-            # 地方候选文书角色更新后隔离旧TARGET标记；旧档案和全国/审核缓存保持。
-            cache_identity["local_notice_priority"] = 2
+        if plan.route in {"UNSUPPORTED_LOCAL", "YICHANG", "REGISTERED_LOCAL"}:
+            # 地方主文件身份检查更新后隔离旧TARGET缓存；旧档案和全国缓存保持。
+            cache_identity["local_notice_priority"] = 5
         if plan.route in {"MOHURD", "REGISTERED_LOCAL"}:
             cache_identity["registered_publications"] = self.publication_catalog.version
         if local:
             cache_identity["reviewed_local_policy"] = LOCAL_POLICY_VERSION
-        if plan.route == "UNSUPPORTED_LOCAL" and plan.region in self.portal_roots:
-            cache_identity["portal_discovery"] = {"version": PORTAL_VERSION, "root": self.portal_roots[plan.region]}
+        if plan.route == "UNSUPPORTED_LOCAL" and supports_portal(plan.region, self.portal_roots):
+            # 省级跨城索引没有城市官网根地址，仍以适配器版本隔离旧无入口缓存。
+            cache_identity["portal_discovery"] = {"version": PORTAL_VERSION, "root": self.portal_roots.get(plan.region)}
         if self.external_provider is not None:
             cache_identity["external_provider"] = self.external_provider.version
         identity = json.dumps(cache_identity, ensure_ascii=False)
@@ -190,15 +191,28 @@ class DiscoveryService:
             else:
                 result = self._discover(queries, omitted, now, plan=plan, notice_budget=notice_budget,
                     **({"prepare_fallbacks": True} if _prepare_fallbacks else {}))
-            if self.external_provider is not None or (plan.route == "UNSUPPORTED_LOCAL" and plan.region in self.portal_roots):
+            if self.external_provider is not None or (plan.route == "UNSUPPORTED_LOCAL"
+                                                       and supports_portal(plan.region, self.portal_roots)):
                 result = self._supplement_external(result, plan, notice_budget=notice_budget)
             result["notice_attempted_count"] = notice_budget.count
             result["discovery_plan"] = public_plan
             if _prepare_fallbacks:
                 from archspec.official_documents.fallbacks import POLICY
                 result["acquisition_policy"] = POLICY
-            # 本次失败单独存记录，但不覆盖以前完整成功的查询结果。
-            if (result["status"] == "FAILED" or result.get("external_status") == "FAILED") and cached:
+            # 第三方搜索失败不应覆盖本轮已实际核对的官方主文件公告；
+            # 摘要、读取失败和其他文书都不能充当本轮已核的目标原件线索。
+            fresh_official_target = any(
+                isinstance(item, dict) and item.get("target_match") == "TARGET"
+                and item.get("notice_type") in {"PUBLICATION", "OFFICIAL_COPY"}
+                and item.get("version_check") in {"ANNOUNCEMENT_ONLY", "OFFICIAL_COPY_ONLY"}
+                for item in result.get("results", ())
+            )
+            external_failed = result.get("external_status") == "FAILED"
+            if fresh_official_target and (result["status"] == "FAILED" or external_failed):
+                # 某来源失败不撤销本轮已经读到并核清身份的官方目标。
+                result["status"] = "PARTIAL"
+            # 官方本身失败仍可用旧快照；无缓存时保留真实失败，不伪装成功。
+            if (result["status"] == "FAILED" or external_failed and not fresh_official_target) and cached:
                 result.update({"status": "STALE_CACHE", "from_cache": True,
                                "fetched_at": cached["fetched_at"],
                                "results": copy.deepcopy(cached["results"]),
@@ -243,14 +257,14 @@ class DiscoveryService:
                 else "未识别可发送的公共规范编号、题名或主题，未调用外部搜索")
             return result
         found, queues, successes, failures = {}, [], 0, 0
-        if plan.route == "UNSUPPORTED_LOCAL" and plan.region in self.portal_roots:
+        if plan.route == "UNSUPPORTED_LOCAL" and supports_portal(plan.region, self.portal_roots):
             native = discover_portal(plan, self.portal_roots, client=getattr(self.provider, "client", None))
             result["searches"].extend(native["searches"])
             result["errors"].extend(native["errors"])
             result["portal_metadata_read_count"] = native["metadata_read_count"]
             if any(row["status"] == "COMPLETE" for row in native["searches"]):
                 result["local_coverage"] = "CLUES_ONLY"
-                result["limitations"] = ["已查询对应机关的官方门户；仅搜索线索，正文、版本和适用性分别核验",
+                result["limitations"] = ["已查询官方搜索入口；仅搜索线索，正文、版本和适用性分别核验",
                                         "每个公共词两提供方各一次，公告正文共享五页上限"]
             queues.extend(native["queues"])
             for clue in native["items"]:
