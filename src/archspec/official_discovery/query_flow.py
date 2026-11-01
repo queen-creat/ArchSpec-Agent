@@ -252,7 +252,10 @@ class OfficialQueryFlow:
 
     def _lookup(self, query, *, region=None, public_titles=()):
         # 与公开检索入口共享问题计划，先过滤地域；不拿未归一化BM25分数当置信度。
+        from archspec.official_discovery.source_hint_filter import active_public_title_hints
+
         plan = prepare_lookup_plan(query, region=region, public_titles=public_titles)
+        public_titles = active_public_title_hints(plan.discovery_plan, query, public_titles)
         options = {"ranking_version": "V1"}
         if public_titles:
             options["reading_priority_titles"] = public_titles

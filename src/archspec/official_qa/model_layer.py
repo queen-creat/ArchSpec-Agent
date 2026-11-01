@@ -249,12 +249,12 @@ class OfficialModelQAService:
                     "住宅设备间能布置在屋顶吗：subjects=[设备间]，attributes=[屋顶]，actions=[布置]。"
                     "示例只说明角色，不提供规范事实；实际词组仍必须在本轮原问逐字出现。"
                     "不能可靠分清角色时给query_focus=null，不改写同义词；系统只供阅读和找资料，不自动引用为答案。"
-                    "UNKNOWN且CLEAR时，请在public_search_titles列出最多3个你可靠认识的相关公开规范题名，"
+                    "理解为CLEAR时，可在public_search_titles列出最多3个你可靠认识的相关公开规范题名，"
                     "不要仅因主题为UNKNOWN就省略选书；不知道可靠名称时返回[]，不得编造。"
                     "这是待核的候选书名，只用于补查官方来源，不是已查到的依据。"
                     "只写规范名称，不写编号、年份、URL或内部项目名称，不从私有标签拼书名。"
                     "服务端只保留公开目录已有名称，候选不提供版本、项目适用性或任何规范事实。"
-                    "其他主题无需额外选书时也必须返回public_search_titles=[]。"
+                    "没有可靠相关书名时必须返回public_search_titles=[]。"
                     "不得输出条号、来源身份、规范版本、网址、数值或项目事实。"
                     "有效主题与操作组合如下：" +
                     json.dumps({key: sorted(value) for key, value in TOPIC_OPERATIONS.items()}, ensure_ascii=False) +
@@ -314,9 +314,18 @@ class OfficialModelQAService:
                     state.update(binding)
                 except ValueError as error:
                     raise LlmGatewayError("INVALID_MODEL_PLAN", "问题焦点无法核对，请重新提问。", False) from error
+            if semantic_v2:
+                from archspec.official_discovery.source_hint_filter import filter_public_title_hints
+
+                # 历史提案和本轮提案都按原问题核对，避免建议复活用户排除的来源。
+                model_plan = model_plan.model_copy(update={"public_search_titles":
+                    filter_public_title_hints(request.query, model_plan.public_search_titles)})
+                proposal = proposal.model_copy(update={"public_search_titles":
+                    filter_public_title_hints(request.query, proposal.public_search_titles)})
             state["understanding_state"] = "VALIDATED"
-            if semantic_v2 and model_plan.public_search_titles:
-                state["public_search_titles"] = list(model_plan.public_search_titles)
+            if semantic_v2 and proposal.public_search_titles:
+                # 只有语义绑定后仍有效的建议能交给前端；检查点保留原始提案。
+                state["public_search_titles"] = list(proposal.public_search_titles)
             state["plan_version"] = "MODEL_SEMANTIC_PLAN_V2" if semantic_v2 else "MODEL_LEGACY_ADAPTER_V1"
             if semantic_v2 and resume_proposal is None and on_proposal is not None:
                 # 短事务先保存已校验语义，后续SELECT/原件核对不持有认领事务。
@@ -337,8 +346,9 @@ class OfficialModelQAService:
             result["model"] = state
             # 已有相似候选不代表所需正文齐备；只把确实未准备的公开建议交回原等待来源流程。
             # 建议不是用户选书，也不证明规范适用；显式范围、含糊理解和正常答案均不改写。
-            if (semantic_v2 and proposal.topic == "UNKNOWN" and proposal.understanding == "CLEAR"
-                    and proposal.query_focus is not None and request.source_ids is None
+            if (semantic_v2 and proposal.understanding == "CLEAR"
+                    and (proposal.topic != "UNKNOWN" or proposal.query_focus is not None)
+                    and request.source_ids is None
                     and result.get("question_plan", {}).get("explicit_source_scope") is None
                     and result["status"] == "READING_ONLY"
                     and not result.get("table_integrity_issues") and not result.get("clause_integrity_issues")):
@@ -346,8 +356,27 @@ class OfficialModelQAService:
                 from archspec.official_documents.public_title_coverage import missing_public_titles
 
                 public_gap = prepare_lookup_plan(request.query).public_dict()["route"] == "PUBLIC_WORDS_NOT_IDENTIFIED"
-                missing = (missing_public_titles(result.get("coverage"), model_plan.public_search_titles)
-                           if public_gap else ())
+                if proposal.topic == "UNKNOWN":
+                    # 沿用未登记专题已有的缺公开词交接合同。
+                    candidates = proposal.public_search_titles if public_gap else ()
+                else:
+                    # 已登记专题仅补查本轮三词预算真正接纳的全国候选。
+                    from archspec.official_discovery.plan import resolve_query_region
+                    from archspec.official_discovery.source_hint_filter import (
+                        active_public_title_hints,
+                    )
+
+                    packet = result.get("project_conditions") or {}
+                    project_region = (packet.get("region") if proposal.topic in
+                                      {"SUNLIGHT_DURATION", "SUNLIGHT_SPACING"} else None)
+                    region = resolve_query_region(request.query, project_region=project_region)
+                    lookup = prepare_lookup_plan(request.query, region=region,
+                                                 public_titles=proposal.public_search_titles)
+                    discovery = lookup.discovery_plan
+                    candidates = (active_public_title_hints(discovery, request.query, proposal.public_search_titles)
+                                  if discovery is not None and discovery.route == "MOHURD"
+                                  and discovery.region is None else ())
+                missing = missing_public_titles(result.get("coverage"), candidates)
                 if missing:
                     result.update(status="MISSING_SOURCE", suggested_source_gaps=list(missing),
                                   summary="已有候选尚未回答本题；建议规范的正文未准备，继续补查官方来源。")

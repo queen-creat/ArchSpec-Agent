@@ -245,7 +245,7 @@ class ModelSemanticProposal(BaseModel):
             aliases = tuple(ReadingRoleAlias(role=role, original=original, term=next(iter(terms)))
                             for (role, original), terms in grouped.items() if len(terms) == 1)
         object.__setattr__(self, "local_reading_aliases", aliases)
-        if self.public_search_titles and (self.topic != "UNKNOWN" or self.understanding != "CLEAR"):
+        if self.public_search_titles and self.understanding != "CLEAR":
             object.__setattr__(self, "public_search_titles", ())
         # 焦点是原问的额外约束，不替代专题政策；已登记主题也不能丢掉对象。
         if self.query_focus is not None and self.understanding != "CLEAR":
@@ -573,7 +573,9 @@ def build_question_plan(request: QuestionRequest, proposal, project_provider=Non
     # 目标只取用户原问，模型提案不能新增书名、版本或条号；与普通查阅共用解析。
     from archspec.official_discovery.plan import build_discovery_plan
     from archspec.official_discovery.public_queries import PUBLIC_CODE
+    from archspec.official_discovery.source_hint_filter import filter_public_title_hints
 
+    public_titles = filter_public_title_hints(request.query, semantic.public_search_titles)
     content = requested_content(request.query)
     scope, clause_number, numbers = None, None, ()
     try:
@@ -621,7 +623,7 @@ def build_question_plan(request: QuestionRequest, proposal, project_provider=Non
         explicit_clause_numbers=numbers,
         requested_editions=discovery.requested_editions if discovery else (),
         planner_source=planner_source, query_focus=query_focus,
-        public_search_titles=semantic.public_search_titles,
+        public_search_titles=public_titles,
         local_reading_terms=semantic.local_reading_terms,
         local_reading_aliases=tuple((row.role, row.original, row.term)
                                    for row in semantic.local_reading_aliases),

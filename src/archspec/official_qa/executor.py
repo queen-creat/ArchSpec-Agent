@@ -325,6 +325,20 @@ class OfficialQAExecutor:
         project_region = (packet["region"] if packet and self.plan.topic in {
             "SUNLIGHT_DURATION", "SUNLIGHT_SPACING"} else None)
         region = resolve_query_region(request.query, project_region=project_region)
+        if self.plan.public_search_titles and request.source_ids is None:
+            from archspec.official_discovery.plan import build_discovery_plan
+            from archspec.official_discovery.source_hint_filter import active_public_title_hints
+
+            # 使用同一次地域解析和有限发现计划，预算外建议不能挤掉其他正文。
+            try:
+                discovery = build_discovery_plan(self.plan.original_query, region=region,
+                                                  public_titles=self.plan.public_search_titles)
+            except ValueError:
+                discovery = None
+            active = active_public_title_hints(discovery, self.plan.original_query,
+                                               self.plan.public_search_titles)
+            if active:
+                self.search_options["reading_priority_titles"] = active
         if region is not None:
             # 复用同次已解析地域，不让背景地名变成正文必须重复的主题词。
             self.policy = policy_for(self.plan, reference_region=region)
@@ -1037,9 +1051,6 @@ class OfficialQAExecutor:
     def execute(self, plan):
         request = self.request
         self.plan = plan
-        if plan.public_search_titles:
-            # 同一语义及恢复计划的公开题名参与有限读取顺序，不扩大选书/地域/许可。
-            self.search_options["reading_priority_titles"] = plan.public_search_titles
         self.policy = policy_for(plan)
         if request.project_id and self.validate_project is not None:
             self.validate_project(request.project_id)

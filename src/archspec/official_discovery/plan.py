@@ -19,7 +19,6 @@ from archspec.official_discovery.public_queries import (
     extract_public_titles,
     normalize_standard_code,
     plan_queries,
-    validated_public_titles,
 )
 from archspec.official_discovery.public_regions import (
     GUANGDONG_EXPLICIT_CITY_NAMES,
@@ -448,7 +447,9 @@ def _general_reference_candidates(query):
 
 def _build_discovery_plan(query, topics=(), *, region=None, public_titles=()):
     """复用既有安全公共词规划，不存原问题，不接受调用方新增规范 URL。"""
-    public_titles = validated_public_titles(public_titles)
+    from archspec.official_discovery.source_hint_filter import filter_public_title_hints
+
+    public_titles = filter_public_title_hints(query, public_titles)
     query = query.strip()
     if len(query) > 500:
         raise ValueError("问题最长为 500 个字")
@@ -534,7 +535,26 @@ def _build_discovery_plan(query, topics=(), *, region=None, public_titles=()):
                              tuple((item["term"], item["reason"]) for item in queries), omitted)
     hinted = bool(public_titles and not extract_public_codes(query) and not extract_public_titles(query))
     directory_fallback = False
-    if hinted:
+    # 已登记专题先保留已有公开查询，候选书名仅填未用的三词预算。
+    # 未登记专题仍采用既有候选优先合同，不改地方或明确书目路线。
+    from archspec.official_qa.question_plan import LocalPlanner
+    known_topic = LocalPlanner().propose(query, {}).get("topic") != "UNKNOWN" if hinted else False
+    if hinted and known_topic:
+        try:
+            baseline = _build_discovery_plan(query, topics, region=None, public_titles=())
+        except ValueError:
+            baseline = None
+        if baseline is not None and baseline.route == "MOHURD":
+            seen = {term for term, _ in baseline.queries}
+            extras = [{"term": title, "reason": "已核公开目录的候选书名；不是用户选书或规范依据"}
+                      for title in public_titles if title not in seen]
+            original = [{"term": term, "reason": reason} for term, reason in baseline.queries]
+            combined = [*original, *extras]
+            omitted = baseline.omitted_query_count + max(0, len(combined) - 3)
+            queries = combined[:3]
+        else:
+            known_topic = False
+    if hinted and not known_topic:
         queries = [{"term": title, "reason": "已核公开目录的候选书名；不是用户选书或规范依据"}
                    for title in public_titles]
         # Keep raw-query public topics as complementary clues, while project-only
@@ -547,7 +567,7 @@ def _build_discovery_plan(query, topics=(), *, region=None, public_titles=()):
         combined = [*queries, *(item for item in fallback if item["term"] not in seen)]
         omitted += max(0, len(combined) - 3)
         queries = combined[:3]
-    else:
+    elif not hinted:
         try:
             queries, omitted = plan_queries(query, topics)
         except ValueError:
