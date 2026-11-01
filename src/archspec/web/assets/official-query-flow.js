@@ -31,8 +31,10 @@
     if (!officialLinks || !isCurrent() || input.value.trim() !== query.trim()
         || scope.value !== sourceId || (project?.value || "") !== (projectId || "")) return;
     clearOfficialLinks();
-    // 只给未取得正文/未找到对应条文的终态补导航，不把运行中或许可拒绝包装成可读正文。
-    if (!["NO_BODY", "NO_EVIDENCE"].includes(flow.state)) return;
+    // 等待期间仅展示已核目标发布记录的官方导航；许可受限时不展示。
+    const preparing = flow.state === "WAITING_BODY";
+    if (!preparing && !["NO_BODY", "NO_EVIDENCE"].includes(flow.state)) return;
+    if (preparing && (flow.error_code || ["RESTRICTED", "UNAVAILABLE"].includes(flow.current_observation_state))) return;
     const links = [], seen = new Set();
     function append(title, url) {
       if (links.length >= 3) return;
@@ -40,6 +42,27 @@
       const link = globalThis.ArchspecOfficialDiscovery?.governmentLink?.(label, url);
       if (!link?.href || seen.has(link.href)) return;
       seen.add(link.href); links.push(link);
+    }
+    if (preparing) {
+      for (const item of Array.isArray(data.results) ? data.results : []) {
+        const verified = item?.target_match === "TARGET" &&
+          ((item.notice_type === "PUBLICATION" && item.version_check === "ANNOUNCEMENT_ONLY") ||
+           (item.notice_type === "OFFICIAL_COPY" && item.version_check === "OFFICIAL_COPY_ONLY"));
+        if (!verified) continue;
+        // 附件可能是修订或其他文件，保留官网名称，不冒称主规范正文。
+        for (const attachment of Array.isArray(item.attachments) ? item.attachments : []) {
+          if (links.length >= 2) break; // 保留一个名额给已核发布页。
+          append("官方附件：" + (attachment?.title || "查看附件"), attachment?.url);
+        }
+        append("官方发布页面：" + (item.standard_title || item.title || "查看公告"), item.url);
+      }
+      if (!links.length) return;
+      const heading = document.createElement("h3"), note = document.createElement("p"), list = document.createElement("ul");
+      heading.textContent = historical ? "上次找到的官方链接" : "先查看官方链接";
+      note.textContent = "正文正在准备，可先访问官方附件或发布页面。";
+      for (const link of links) { const row = document.createElement("li"); row.append(link); list.append(row); }
+      officialLinks.append(heading, note, list); officialLinks.hidden = false;
+      return;
     }
     for (const item of Array.isArray(data.results) ? data.results : [])
       append(item?.standard_title || item?.title, item?.url);
