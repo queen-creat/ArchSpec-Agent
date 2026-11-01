@@ -20,13 +20,26 @@ from archspec.official_http import official_http_client
 # 保留原模块的公开目录入口，外部消费同一不可变来源，不另维护副本。
 __all__ = ["DIRECTORY_SHA256", "DIRECTORY_SOURCE", "PORTAL_ROOTS", "VERIFIED_SEARCH_CONTRACTS", "VERSION", "discover_portal"]
 
-VERSION = "OFFICIAL_PORTAL_DISCOVERY_V3"
+VERSION = "OFFICIAL_PORTAL_DISCOVERY_V4"
 _API = "https://api.so-gov.cn/"
 # 已核的公开工具合同，记录官方页面指纹；不含规范地址、正文或答案。
 # 在线query/site仍逐次核对站点身份及全域栏目，避免每题重复依赖门户首页。
 VERIFIED_SEARCH_CONTRACTS = {
     "https://www.xm.gov.cn/": {"entry": "https://www.xm.gov.cn/so/s",
         "site_code": "3502000001", "sha256": "0f2b038b9875872256f812181b48f2a31709f1aa9423b822ce4e8b5632142226"},
+}
+
+
+# 仅登记真实核验的官网合同；不同地区复用同一适配器，不根据用户问题拼地址。
+VERIFIED_IGS_CONTRACTS = {
+    "https://www.wuhan.gov.cn/": {
+        "entry": "/search/index.shtml",
+        "endpoint": "/igs/front/search.jhtml",
+        "config": "/material/2025_search/js/config.js",
+        "site_id": "10",
+        "code": "ffd32baa9d7a4b0db3d2c7a55d2e8959",
+        "sha256": "e93e213438dd2b575fcc0a429e61fd6752c3b8d7ed05e49e458c03192008efbc",
+    },
 }
 
 
@@ -43,6 +56,92 @@ def _read(client, method, url, *, headers=None, **options):
     return bytes(raw)
 
 
+def _igs_plain_text(value, limit):
+    """官网索引字段仅作纯文本线索，不能作为规范正文。"""
+    if not isinstance(value, str) or not value.strip():
+        return ""
+    try:
+        return html.fragment_fromstring(value, create_parent=True).text_content().strip()[:limit]
+    except (ValueError, TypeError):
+        return ""
+
+
+def _discover_reviewed_igs(plan, root, contract, client, result):
+    """使用已核同源 IGS 合同；不执行脚本，不接受动态端点。"""
+    import json
+
+    root_url = urlsplit(validate_government_url(root))
+    endpoints = []
+    for field in ("entry", "endpoint", "config"):
+        path = contract[field]
+        if not isinstance(path, str) or not path.startswith("/") or path.startswith("//"):
+            raise ValueError("官方搜索合同路径无效")
+        url = validate_government_url(urljoin(root, path))
+        parsed = urlsplit(url)
+        if (parsed.scheme != "https" or parsed.hostname != root_url.hostname
+                or parsed.port != root_url.port or parsed.query or parsed.fragment):
+            raise ValueError("官方搜索合同必须同源")
+        endpoints.append(url)
+    entry, endpoint, config_url = endpoints
+    site, code = contract["site_id"], contract["code"]
+    if (not isinstance(site, str) or not re.fullmatch(r"[0-9]{1,10}", site)
+            or not isinstance(code, str) or not re.fullmatch(r"[a-f0-9]{32}", code)
+            or not re.fullmatch(r"[a-f0-9]{64}", contract["sha256"])):
+        raise ValueError("官方搜索合同身份无效")
+    result["search_contract"] = {"source_url": config_url, "sha256": contract["sha256"]}
+    for term, _reason in plan.queries[:3]:
+        public = f"{plan.region} {term}" if plan.region not in term else term
+        validate_public_term(public)
+        # 官方站点身份约束地域；只发送已登记公共词，不发送用户原问。
+        query = term[len(plan.region) + 1:] if term.startswith(plan.region + " ") else term
+        try:
+            payload = json.loads(_read(client, "GET", endpoint, headers={"Referer": entry}, params={
+                "code": code, "siteId": site, "searchWord": query,
+                "pageNumber": 1, "pageSize": 10, "queryAll": "true"}))
+            page = payload["page"]
+            if (not isinstance(page, dict) or page.get("code") != code
+                    or page.get("searchWord") != query or not isinstance(page.get("content"), list)):
+                raise ValueError("官方搜索响应身份或查询词不一致")
+            items = []
+            for row in page["content"][:10]:
+                if not isinstance(row, dict):
+                    continue
+                observed_url = row.get("DOCPUBURL") or row.get("url")
+                if not isinstance(observed_url, str):
+                    continue
+                try:
+                    parsed = urlsplit(observed_url)
+                    # 和已有门户一致：仅把政府站的明文地址升级到同域 HTTPS。
+                    candidate = (urlunsplit(("https", parsed.netloc, parsed.path, parsed.query, parsed.fragment))
+                                 if parsed.scheme == "http" else observed_url)
+                    url = validate_government_url(candidate)
+                except ValueError:
+                    continue
+                title = _igs_plain_text(row.get("FileName") or row.get("DOCTITLE") or row.get("title"), 500)
+                if not title:
+                    continue
+                excerpt = _igs_plain_text(row.get("DOCCONTENT") or row.get("content"), 4000)
+                items.append({"title": title, "url": url, "excerpt": excerpt,
+                              "score": 0.0, "score_kind": "NOT_CALIBRATED",
+                              "kind": "SEARCH_SNIPPET", "body_status": "NOT_ACQUIRED",
+                              "lifecycle_status": "UNKNOWN", "provider": "NATIVE_PORTAL",
+                              "matched_queries": [public], "requested_region": plan.region,
+                              "observed_url": observed_url})
+            from archspec.official_discovery.government_copies import candidate_priority
+            items = sorted(items, key=lambda clue: candidate_priority(clue, plan))[:5]
+            result["items"].extend(items)
+            result["queues"].append([item["url"] for item in items])
+            result["searches"].append({"term": public, "provider": "NATIVE_PORTAL",
+                "status": "COMPLETE", "result_count": len(items), "search_query": query,
+                "site_code": site, "source_url": entry, "scope_label": "官网全部栏目",
+                "search_url": entry + "?" + urlencode({"searchWord": query})})
+        except Exception:  # noqa: BLE001 -- 单词失败不重试，也不采用无法绑定的摘要。
+            result["searches"].append({"term": public, "provider": "NATIVE_PORTAL",
+                "status": "FAILED", "result_count": 0, "message": "属地官方搜索暂不可用，本词未取得线索"})
+            result["errors"].append({"term": public, "message": "属地官方搜索暂不可用，本词未取得线索"})
+    return result
+
+
 def discover_portal(plan, roots, *, client=None):
     """在已有三个公共词内按真实机关站点检索，返回线索给共同五页正文读取器。"""
     import json
@@ -54,6 +153,9 @@ def discover_portal(plan, roots, *, client=None):
     client = client or official_http_client()
     try:
         validate_government_url(root)
+        igs = VERIFIED_IGS_CONTRACTS.get(root)
+        if igs:
+            return _discover_reviewed_igs(plan, root, igs, client, result)
         contract = VERIFIED_SEARCH_CONTRACTS.get(root)
         if contract:
             entry, site = contract["entry"], contract["site_code"]

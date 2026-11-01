@@ -29,6 +29,10 @@ from archspec.official_documents.local_policy import (
 )
 from archspec.query_scope import requested_content
 
+# 无公开词时只选择固定的公开综合文件候选；不截取原问或项目资料外发。
+LOCAL_BUILDING_FALLBACK = "LOCAL_BUILDING_REFERENCE_V1"
+_LOCAL_BUILDING_SUBJECT = re.compile(r"建筑|建设工程|用地|地块|住宅|房屋|楼宇")
+_LOCAL_RULE_REQUEST = re.compile(r"规范|规定|标准|要求|限制|条件|控制|范围|规则|办法|条例|细则|多远|多少|几米|多大|多高|能否|能不能|可以|如何|怎样|怎么|查")
 LOCAL_SCOPE_WORDS = ("地方标准", "地方规范", "地方规定", "本地", "本市", "本省", "当地", "某市", "某省")
 MATCH_MESSAGES = {
     "TARGET": "公告主规范与本次公共目标匹配；正文、版本及适用性仍需分别核验",
@@ -125,6 +129,8 @@ class DiscoveryPlan:
             "queries": [{"term": term, "reason": reason} for term, reason in self.queries],
             "omitted_query_count": self.omitted_query_count,
         }
+        if any(kind == "LOCAL_FALLBACK" for kind, _ in self.targets):
+            result["fallback"] = LOCAL_BUILDING_FALLBACK
         if self.requested_editions:
             result["requested_editions"] = [{"kind": kind, "value": value, "year": year}
                 for kind, value, year in self.requested_editions]
@@ -175,6 +181,17 @@ class DiscoveryPlan:
             if (non_rule_notice_title(title) or procedural_notice_title(title)
                     or re.search(r"解读|图解|问答|答疑|征求意见|草案|公示", subject)):
                 return "ASSOCIATED"
+            # 通用兜底只核已登记的综合文件身份；不把本地所有规划/建筑办法当目标。
+            # 这是获取候选原件的身份判定，不证明该文件能回答原问题或适用于项目。
+            fallback_titles = tuple(value for kind, value in self.targets if kind == "LOCAL_FALLBACK")
+            if fallback_titles:
+                base = _compact(without_editions(title))
+                tail = base[len(self.region):] if base.startswith(self.region) else ""
+                for suffix in ("自治区", "省", "市"):
+                    if tail.startswith(suffix):
+                        tail = tail[len(suffix):]
+                        break
+                return "TARGET" if tail in {_compact(value) for value in fallback_titles} else "ASSOCIATED"
             known = any(_compact(value) in subject for kind, value in self.targets if kind == "LOCAL_TOPIC")
             # 地方正式文件名称各异；共用文书类别，不逐城市添加题名特例。
             planning = any(value in LOCAL_PLANNING_TITLES for kind, value in self.targets)
@@ -355,6 +372,14 @@ def _build_discovery_plan(query, topics=(), *, region=None, public_titles=()):
             if not queries and public_titles and region != "地域待补充":
                 queries = [{"term": title, "reason": "已核公开目录的地方候选书名；不是用户选书或正文证明"}
                            for title in public_titles]
+            if (not queries and region != "地域待补充" and _LOCAL_BUILDING_SUBJECT.search(query)
+                    and _LOCAL_RULE_REQUEST.search(query)):
+                # 无法识别具体主题时检索固定公共规划候选，不把用户文本切片传给政府网站。
+                # 条目必须匹配综合文件名称；对问题的相关性仍由原有检索/证据流程判定。
+                return DiscoveryPlan("UNSUPPORTED_LOCAL", region,
+                    tuple(("LOCAL_FALLBACK", title) for title in LOCAL_PLANNING_TITLES),
+                    tuple((term, "已知地区建筑问题的公开综合文件候选；并非答案")
+                          for term in (LOCAL_PLANNING_QUERY, LOCAL_PLANNING_TITLES[1])), 0)
             targets=tuple(item["term"] for item in queries)
         return DiscoveryPlan("UNSUPPORTED_LOCAL", region,
                              tuple(("LOCAL_TOPIC", title) for title in targets),

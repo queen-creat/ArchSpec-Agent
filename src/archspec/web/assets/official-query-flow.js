@@ -433,9 +433,15 @@
     const decision = checkedNetwork(localResult);
     let publicTitleHints=[];
     const hintPlan=localResult?.lookup?.public_plan;
-    if(['SCOPE_REVIEW_REQUIRED','CACHE_MATCHED','LOCAL_GAP','CANDIDATE_UNCONFIRMED','UNVERIFIED'].includes(decision?.reason)
+    // 地方冷查询没有明确公开词，或只有通用兜底时，等待本题已授权理解的公开题名。
+    // 明确地域与空查询/受标记兜底共同限定；已有精确词和恢复的历史任务不延迟或扩大发现。
+    const localTitleGap=decision?.reason==='REGION' && hintPlan?.route==='UNSUPPORTED_LOCAL'
+      && typeof hintPlan.region==='string' && hintPlan.region.length>0 && hintPlan.region!=='地域待补充'
+      && Array.isArray(hintPlan.queries)
+      && (hintPlan.queries.length===0 || hintPlan.fallback==='LOCAL_BUILDING_REFERENCE_V1');
+    if((localTitleGap || ['SCOPE_REVIEW_REQUIRED','CACHE_MATCHED','LOCAL_GAP','CANDIDATE_UNCONFIRMED','UNVERIFIED'].includes(decision?.reason)
         && (hintPlan?.route==='PUBLIC_WORDS_NOT_IDENTIFIED'
-          ||hintPlan?.route==='MOHURD' && hintPlan.region===null)
+          ||hintPlan?.route==='MOHURD' && hintPlan.region===null))
         && !context.restored && context.publicTitlesReady?.then) {
       status.textContent="正在核对本轮理解建议的公开规范名称……";
       try {
