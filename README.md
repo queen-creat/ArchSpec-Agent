@@ -13,26 +13,15 @@
 - **本地保存**：资料与阅读状态保存在自己的电脑，刷新后继续查阅。
 - **可选 AI 辅助**：使用自己的模型配置辅助理解问题、按出处整理内容。
 
-## 快速开始
+## 三步开始使用
 
-先按 [uv 官方说明](https://docs.astral.sh/uv/getting-started/installation/)安装 uv，并重新打开终端。项目默认使用 Python 3.13；uv 会准备需要的解释器和锁定依赖。
+1. 点击 GitHub 页面右上方绿色 **Code** → **Download ZIP**，下载后解压到电脑上的普通文件夹。
+2. 打开解压后的文件夹：Windows 双击 `启动本机版.bat`；Mac 双击 `启动个人版.command`。首次启动需要联网，程序会从 uv 官方网站准备运行工具和依赖，请耐心等待。
+3. 在弹出的设置窗口填写自己的 DeepSeek API Key，记下窗口里的本机登录账号，点击“复制登录密码”，点击“开始使用”。页面打开后登录，即可输入问题查找规范。
 
-下载或克隆本仓库后，在项目目录选择启动入口：
+使用期间请保持启动时打开的窗口；关闭它会停止工作台。下次使用再次双击同一个启动文件即可，已有配置不会被覆盖。
 
-| 系统 | 启动方式 |
-| --- | --- |
-| macOS | 双击 `启动个人版.command` |
-| Linux | 执行 `sh 启动本机版.sh` |
-| Windows | 双击 `启动本机版.bat` |
-
-也可在终端执行：
-
-```text
-uv sync --frozen --no-dev
-uv run --frozen --no-dev --offline --no-env-file python scripts/run_local.py --personal --port 8010
-```
-
-打开终端显示的本机网址。首次账号和密码保存在 `data/local-access/personal-access.private.env`，用文本编辑器查看。运行期间保留启动终端，按 Ctrl+C 退出。
+Mac 如果提示无法打开脚本，请在文件上点右键，选择“打开”，再按系统提示操作。Linux 用户及遇到问题时，请看[本机使用说明](docs/本机使用.md)。
 
 ## 开始查阅
 
@@ -40,29 +29,11 @@ uv run --frozen --no-dev --offline --no-env-file python scripts/run_local.py --p
 
 首次使用从官方来源取得规范资料，仓库不附带规范原件。规范版本和具体项目适用条件可结合出处与原页核对。
 
-## 模型与搜索配置
+## DeepSeek 与联网搜索
 
-默认 AI 为 **DeepSeek**。每位使用者填写自己的 API Key，无需部署服务器。
+首次设置窗口可填写自己的 DeepSeek API Key；如果暂时没有，也可以先跳过，使用本地查找和官方联网搜索。已有配置不会被自动覆盖。DeepSeek 按服务商标准计费，Key 保存在自己的电脑上。Tavily 是可选的搜索补充，不填也可以查找官方来源。
 
-1. 在项目目录执行以下命令，生成本机私有配置：
-
-   ```text
-   uv run --frozen --no-dev --no-env-file python scripts/run_local.py --prepare-config
-   ```
-
-2. 用文本编辑器打开 `data/local-access/personal-model.private.env`，填写并保存：
-
-   ```dotenv
-   DEEPSEEK_API_KEY=你的DeepSeek_API_Key
-   ```
-
-3. 启动或重启工作台，输入问题并点击“查找条文”。默认由 DeepSeek 理解问题，再检索资料、补查官方来源并展示出处与原页。只输入书名时可直接打开已有书目。
-
-页面“更多选项”可关闭 DeepSeek，进行本地查阅。未填 Key 时会提示配置步骤，并保留本地检索。模型请求按 DeepSeek 服务计费，受本机累计预算限制；刷新和恢复历史不会自动发起收费请求。Key 只保存在本机服务端，配置文件、规范资料和本机数据库不提交到 GitHub。
-
-Tavily 是可选搜索服务，配置方法见本机使用说明。
-
-完整步骤见[本机使用说明](docs/本机使用.md)。
+获取或管理 Key 请访问 [DeepSeek 开放平台](https://platform.deepseek.com/)。完整配置、更新和故障排查见[本机使用说明](docs/本机使用.md)。
 
 ## 技术栈
 

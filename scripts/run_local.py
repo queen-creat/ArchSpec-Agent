@@ -169,11 +169,25 @@ def configure_personal_access(project_root):
             "credentials_file": str(root / "data/local-access/personal-access.private.env")}
 
 
+def open_browser_when_ready(server, host, port):
+    """只打开本进程成功监听的服务，避免误开占用同端口的其他程序。"""
+    import time
+    import webbrowser
+    deadline = time.monotonic() + 90
+    while not server.started and not server.should_exit and time.monotonic() < deadline:
+        time.sleep(0.1)
+    if server.started:
+        display_host = "[::1]" if host == "::1" else host
+        webbrowser.open(f"http://{display_host}:{port}/")
+
+
 def main():
     parser = argparse.ArgumentParser(description="ArchSpec 仅本机启动工具")
     parser.add_argument("--host", default="127.0.0.1")
     parser.add_argument("--port", type=int, default=8010)
     parser.add_argument("--check", action="store_true", help="只检查配置，不启动服务")
+    parser.add_argument("--easy-start", action="store_true", help="使用本机图形向导设置账号和模型")
+    parser.add_argument("--open-browser", action="store_true", help="服务就绪后自动打开本机页面")
     modes = parser.add_mutually_exclusive_group()
     modes.add_argument("--prepare-config", action="store_true", help="只创建空的可选模型/搜索私有配置，已有文件不读不覆盖")
     modes.add_argument("--development", action="store_true", help="免费本地开发：关闭模型API、外部搜索及云计算，保留官方联网")
@@ -188,6 +202,8 @@ def main():
         parser.error("端口须为1—65535")
     if args.embedding_model_dir and not (args.local_processing or args.personal):
         parser.error("模型目录只用于--local-processing")
+    if args.easy_start and (not args.personal or args.check):
+        parser.error("图形向导仅用于正常启动个人版")
     if args.prepare_config and args.check:
         parser.error("--prepare-config会创建空文件，请单独使用；不能与--check合用")
     if args.prepare_config:
@@ -195,6 +211,10 @@ def main():
 
         print(json.dumps(prepare_optional_files(Path(__file__).resolve().parents[1]), ensure_ascii=False))
         return
+    if args.easy_start:
+        from archspec.easy_start import run_easy_start
+        if not run_easy_start(Path(__file__).resolve().parents[1]):
+            raise SystemExit(1)
     development = configure_development_mode(Path(__file__).resolve().parents[1]) if args.development else None
     personal = configure_personal_mode(Path(__file__).resolve().parents[1]) if args.personal else None
     root = Path(__file__).resolve().parents[1]
@@ -218,7 +238,16 @@ def main():
     # 无需记住运行目录；默认资料仍在项目原来的 data。
     os.chdir(Path(__file__).resolve().parents[1])
     target = "archspec.personal:create_personal_app" if args.personal else "archspec.main:app"
-    uvicorn.run(target, factory=args.personal, host=args.host, port=args.port, proxy_headers=False)
+    if not args.open_browser:
+        uvicorn.run(target, factory=args.personal, host=args.host, port=args.port, proxy_headers=False)
+        return
+    # 仅在本次服务启动成功后打开浏览器；端口被占用时不误打开其他程序。
+    import threading
+    server = uvicorn.Server(uvicorn.Config(target, factory=args.personal, host=args.host,
+                                           port=args.port, proxy_headers=False))
+    threading.Thread(target=open_browser_when_ready, args=(server, args.host, args.port),
+                     daemon=True).start()
+    server.run()
 
 
 if __name__ == "__main__":
