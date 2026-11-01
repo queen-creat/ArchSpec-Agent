@@ -54,6 +54,19 @@ def non_rule_notice_title(title):
         r"|(?:会议|培训|采购|招标).*(?:通知|公告)$", subject))
 
 
+def procedural_notice_title(title):
+    """明确行政办理/核发/核实程序不替代技术规范；不判断该文书法律效力。
+
+    技术审查规定并非一次许可办理流程，不能仅凭“审查”二字排除。
+    此角色只限制技术目标准入，原官方链接仍保留为关联线索。
+    """
+    subject = _compact(title)
+    return bool(re.search(
+        r"(?:(?:竣工(?:规划)?(?:条件)?|规划条件)(?:核实|核验|验收)"
+        r"|(?:规划|施工)(?:许可证?|审批|备案)(?:申请|办理|核发|程序|流程))"
+        r".{0,12}(?:办法|规定|细则|规则|规程|程序)(?:试行|暂行)?(?:的?通知)?$", subject))
+
+
 def _reference_groups(query):
     """公开引用原位置共用一次；并列分组不拆题名内部标点。"""
     mentions = [(match.start(), match.end(), ("CODE", normalize_standard_code(match.group())))
@@ -159,7 +172,8 @@ class DiscoveryPlan:
                 return "UNKNOWN"
             if normalize_standard_code(standard_code) is not None:
                 return "ASSOCIATED"
-            if non_rule_notice_title(title) or re.search(r"解读|图解|问答|答疑|征求意见|草案|公示", subject):
+            if (non_rule_notice_title(title) or procedural_notice_title(title)
+                    or re.search(r"解读|图解|问答|答疑|征求意见|草案|公示", subject)):
                 return "ASSOCIATED"
             known = any(_compact(value) in subject for kind, value in self.targets if kind == "LOCAL_TOPIC")
             # 地方正式文件名称各异；共用文书类别，不逐城市添加题名特例。

@@ -11,7 +11,7 @@ import pymupdf
 
 from archspec.official_discovery.editions import bind_editions, source_editions, without_editions
 from archspec.official_discovery.local_sources import _LocalPageParser
-from archspec.official_discovery.plan import non_rule_notice_title
+from archspec.official_discovery.plan import non_rule_notice_title, procedural_notice_title
 from archspec.official_discovery.provider import MAX_BYTES
 from archspec.official_discovery.public_queries import (
     LOCAL_SUNLIGHT_TITLES,
@@ -283,7 +283,7 @@ def inspect_government_copy(clue, plan, *, client=None, capture_original=None, c
         headings = [page.meta.get("articletitle", ""), *page.subject_titles,
                     re.split(r"[-_|]政务公开", page.document_title)[0].strip()]
         # 非正式/解读页仅能沿明确正式原文链接继续，不能直接登记其附件或正文。
-        if any(non_rule_notice_title(heading) or re.search(
+        if any(non_rule_notice_title(heading) or procedural_notice_title(heading) or re.search(
                 r"征求意见|草案|送审稿|报批稿|局部修订|部分条文|修改单|补充(?:规定|细则|通知|说明)|解读|图解|问答|答疑", heading)
                 for heading in headings if heading):
             return _navigation(page, url, plan, raw)

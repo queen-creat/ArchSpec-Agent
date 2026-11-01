@@ -148,8 +148,8 @@ class DiscoveryService:
         if _prepare_fallbacks:
             cache_identity["bounded_fallback"] = 1
         if plan.route == "UNSUPPORTED_LOCAL":
-            # 只隔离地方候选新排序，旧查询档案和全国/已审核来源缓存保持。
-            cache_identity["local_notice_priority"] = 1
+            # 地方候选文书角色更新后隔离旧TARGET标记；旧档案和全国/审核缓存保持。
+            cache_identity["local_notice_priority"] = 2
         if plan.route in {"MOHURD", "REGISTERED_LOCAL"}:
             cache_identity["registered_publications"] = self.publication_catalog.version
         if local:
