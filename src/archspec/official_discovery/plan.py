@@ -336,6 +336,11 @@ def _build_discovery_plan(query, topics=(), *, region=None, public_titles=()):
             targets=(*LOCAL_PLANNING_TITLES,*(LOCAL_SUNLIGHT_TITLES if sunlight else ()))
             omitted = 0
         else:
+            # 已核公开题名是共同计划的候选提示，地方路线不能将它静默丢弃。
+            # 只在原问未形成公共查询时补入；不覆盖编号/已识别主题或推定地域。
+            if not queries and public_titles and region != "地域待补充":
+                queries = [{"term": title, "reason": "已核公开目录的地方候选书名；不是用户选书或正文证明"}
+                           for title in public_titles]
             targets=tuple(item["term"] for item in queries)
         return DiscoveryPlan("UNSUPPORTED_LOCAL", region,
                              tuple(("LOCAL_TOPIC", title) for title in targets),
