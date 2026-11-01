@@ -1107,8 +1107,8 @@ document.querySelectorAll(".query-examples button").forEach((button) => {
   });
 });
 
-// 阅读/联网恢复必须等待当前项目身份核对，避免先恢复全局历史再切项目。
-const initialProjectSelection = loadProjects();
+// 精简工作台默认不关联项目；已有项目和会话记录保留，不自动带入本次查询。
+const initialProjectSelection = Promise.resolve(true);
 globalThis.ArchspecProjectSelectionReady = initialProjectSelection.then(ready => ready !== false, () => false);
 Promise.all([initialProjectSelection, loadReviews(), loadAgentStatus()]).catch((error) => {
   searchStatus.textContent = `页面数据读取失败：${error.message}`;
